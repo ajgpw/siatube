@@ -4,7 +4,7 @@
     <slot />
   </div>
   <template v-else>
-    <button type="button" class="player-settings-toggle" aria-label="再生設定を開く"
+    <button v-show="visible" type="button" class="player-settings-toggle" aria-label="再生設定を開く"
       aria-haspopup="dialog" :aria-expanded="isOpen" @click.stop="openSettings">
       <span aria-hidden="true"></span> 設定
     </button>
@@ -23,13 +23,14 @@
 import { ref, onBeforeUnmount } from 'vue';
 
 defineProps({ visible: { type: Boolean, default: true } });
-defineEmits(['interaction']);
+const emit = defineEmits(['interaction']);
 const media = window.matchMedia('(max-width: 789px)');
 const isMobile = ref(media.matches);
 const isOpen = ref(false);
 const dialog = ref(null);
 
 function openSettings() {
+  emit('interaction');
   dialog.value?.showModal();
   isOpen.value = true;
 }

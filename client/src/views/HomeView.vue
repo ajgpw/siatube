@@ -25,7 +25,7 @@
     <footer class="footer">
       <p style="margin-block-start: 1px; color: var(--text-primary);">しあtube</p>
       <p style="color: var(--text-primary);">
-        <a href="https://github.com/siawaseoktest/youtube" target="_blank" rel="noopener noreferrer">GitHub</a> |
+        <a href="https://github.com/ajgpw/siatube" target="_blank" rel="noopener noreferrer">GitHub</a> |
         <a href="https://line.me/ti/g2/PT62G9W_N5WOkD7VECW3tftJlCn2KTJIVt6k7g" target="_blank" rel="noopener noreferrer">LINE</a> |
         <a href="https://www.chatwork.com/g/siatube" target="_blank" rel="noopener noreferrer">ChatWork</a>
       </p>

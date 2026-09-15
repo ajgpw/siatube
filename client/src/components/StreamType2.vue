@@ -720,7 +720,9 @@ onMounted(() => {
 
   window.addEventListener('mousemove', showSettingsBox);
   window.addEventListener('click', showSettingsBox);
+  window.addEventListener('touchstart', showSettingsBox, { passive: true });
   window.addEventListener('scroll', showSettingsBox);
+  showSettingsBox();
   window.addEventListener(AUTOPLAY_SETTING_EVENT, handleAutoplaySettingChange);
   // attach loop timeupdate handler if video element exists
   try {
@@ -745,6 +747,7 @@ onBeforeUnmount(() => {
   try {
     window.removeEventListener('mousemove', showSettingsBox);
     window.removeEventListener('click', showSettingsBox);
+    window.removeEventListener('touchstart', showSettingsBox);
     window.removeEventListener('scroll', showSettingsBox);
     window.removeEventListener(AUTOPLAY_SETTING_EVENT, handleAutoplaySettingChange);
   } catch (e) {}

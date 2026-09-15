@@ -95,6 +95,7 @@ let requestSequence = 0;
 let endedHandled = false;
 let settingsHideTimer = null;
 const repeatRestartTimers = new Set();
+const autoplayStartTimers = new Set();
 const USER_GESTURE_KEY = "yt_user_gesture_v1";
 
 function clearRepeatRestartTimers() {
@@ -102,11 +103,17 @@ function clearRepeatRestartTimers() {
   repeatRestartTimers.clear();
 }
 
+function clearAutoplayStartTimers() {
+  for (const timer of autoplayStartTimers) window.clearTimeout(timer);
+  autoplayStartTimers.clear();
+}
+
 function destroyPlayer() {
   playerReady = false;
   endedHandled = false;
   showUnmutePrompt.value = false;
   clearRepeatRestartTimers();
+  clearAutoplayStartTimers();
   if (!player) return;
   try {
     player.destroy();
@@ -183,6 +190,24 @@ function startPlayerPlayback(target = player) {
   } catch {}
 }
 
+function scheduleAutoplayStart(sequence, target) {
+  clearAutoplayStartTimers();
+  if (!autoplayEnabled.value || !target) return;
+  startPlayerPlayback(target);
+  // IFrame API が ready を通知しても、動画がまだ cue 中の場合がある。
+  for (const delay of [300, 1000]) {
+    const timer = window.setTimeout(() => {
+      autoplayStartTimers.delete(timer);
+      if (sequence !== requestSequence || !autoplayEnabled.value || !playerReady) return;
+      try {
+        const state = target.getPlayerState?.();
+        if (state === -1 || state === 5) startPlayerPlayback(target);
+      } catch {}
+    }, delay);
+    autoplayStartTimers.add(timer);
+  }
+}
+
 function handleUnmuteClick() {
   try {
     localStorage.setItem(USER_GESTURE_KEY, "1");
@@ -210,15 +235,18 @@ function initializePlayer(sequence) {
       onReady: (event) => {
         if (sequence !== requestSequence) return;
         playerReady = true;
-        if (autoplayEnabled.value || repeatEnabled.value) {
-          startPlayerPlayback(event.target);
-        }
+        if (autoplayEnabled.value) scheduleAutoplayStart(sequence, event.target);
+        else if (repeatEnabled.value) startPlayerPlayback(event.target);
       },
       onStateChange: (event) => {
         if (sequence !== requestSequence) return;
         if (event.data === 1) {
           endedHandled = false;
           clearRepeatRestartTimers();
+          clearAutoplayStartTimers();
+        }
+        if (event.data === 5 && autoplayEnabled.value) {
+          startPlayerPlayback(event.target);
         }
         if (event.data === 0) handlePlayerEnded();
       },
@@ -305,9 +333,6 @@ function handleAutoplaySettingChange(event) {
   const nextEnabled = typeof enabled === "boolean" ? enabled : loadAutoplay();
   if (nextEnabled && repeatEnabled.value) repeatEnabled.value = false;
   autoplayEnabled.value = nextEnabled;
-  if (autoplayEnabled.value && playerReady && player) {
-    startPlayerPlayback();
-  }
 }
 
 function showSettingsBox() {
@@ -348,6 +373,11 @@ watch(repeatEnabled, (enabled) => {
 
 watch(autoplayEnabled, (enabled) => {
   saveAutoplay(enabled);
+  if (enabled && playerReady && player) {
+    scheduleAutoplayStart(requestSequence, player);
+  } else if (!enabled) {
+    clearAutoplayStartTimers();
+  }
 });
 
 watch(
