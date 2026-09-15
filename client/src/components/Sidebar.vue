@@ -1,6 +1,6 @@
 <template>
   <aside class="sidebar" :class="{ 'compact-mode': !isOpen && !isHidden, 'hidden-mode': isHidden, 'is-open': isHidden && isOpen }">
-    <nav class="sidebar-nav">
+    <nav class="sidebar-nav" aria-label="メインメニュー">
       <router-link to="/" class="sidebar-item" :class="{ active: isActive('/') }">
         <span class="sidebar-icon">
           <span class="yt-icon-shape style-scope yt-icon ytSpecIconShapeHost"><div style="width: 100%; height: 100%; display: block; fill: currentcolor;"><svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24" focusable="false" aria-hidden="true" style="pointer-events: none; display: inherit; width: 100%; height: 100%;"><path d="m11.485 2.143-8 4.8-2 1.2a1 1 0 001.03 1.714L3 9.567V20a2 2 0 002 2h6v-7h2v7h6a2 2 0 002-2V9.567l.485.29a1 1 0 001.03-1.714l-2-1.2-8-4.8a1 1 0 00-1.03 0ZM5 8.366l7-4.2 7 4.2V20h-4v-5.5a1.5 1.5 0 00-1.5-1.5h-3A1.5 1.5 0 009 14.5V20H5V8.366Z"></path></svg></div></span>
@@ -45,6 +45,7 @@
 </template>
 
 <script>
+import { useRoute } from 'vue-router';
 import { ref, computed, onMounted, watch, inject, onUnmounted, nextTick } from 'vue';
 
 export default {
@@ -138,10 +139,8 @@ export default {
       }
     };
 
-    const isActive = (path) => {
-      // Will be called in template, but we need the route context
-      return false; // Placeholder, will use methods instead
-    };
+    const route = useRoute();
+    const isActive = (path) => route.path === path;
 
     onMounted(() => {
       // Clear localStorage sidebar state on page load - always use screen-size defaults
@@ -363,4 +362,40 @@ export default {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   }
 }
+
+/* On phones the same navigation becomes a persistent bottom bar. */
+@media (max-width: 789px) {
+  .sidebar,
+  .sidebar.hidden-mode,
+  .sidebar.hidden-mode.is-open,
+  :global(body.settings-modal-open) .sidebar {
+    display: block;
+    top: auto;
+    bottom: 0;
+    width: 100%;
+    height: auto;
+    max-height: none;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    border-right: 0;
+    border-top: 1px solid var(--border-color);
+    box-shadow: 0 -2px 12px rgb(0 0 0 / 6%);
+    z-index: 1000;
+  }
+  .sidebar-nav { flex-direction: row; padding: 0; }
+  .sidebar-item, .sidebar-item.sidebar-button {
+    flex: 1;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    min-height: 64px;
+    padding: 8px 2px;
+    border: 0;
+    border-top: 3px solid transparent;
+  }
+  .sidebar-item.active { border-top-color: var(--accent-color); }
+  .sidebar-icon { margin: 0; }
+  .sidebar-label { font-size: 10px; line-height: 1.4; max-width: 100%; }
+  .sidebar-item:focus-visible { outline: 2px solid var(--accent-color); outline-offset: -3px; }
+}
+
 </style>

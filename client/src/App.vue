@@ -7,9 +7,9 @@
     />
     <Sidebar :open="sidebarOpen" :is-watch-page="route.path === '/watch'" />
     <main class="app-content" :class="{ 'sidebar-closed': !sidebarOpen }">
-      <div v-if="updateAvailable" class="version-warning" role="alert">
+      <div v-if="updateAvailable && temporaryUpdateError" class="version-warning" role="alert">
         <div>
-          <strong>新しいバージョンがあります</strong>
+          <strong>自動更新に失敗しました</strong>
           <p>現在: {{ currentVersion }} ／ 最新: {{ latestVersion }}</p>
           <p v-if="temporaryUpdateError" class="temporary-update-error">
             最新バージョンを読み込めませんでした。通信またはプロキシ設定を確認してください。
@@ -22,7 +22,7 @@
             :disabled="temporaryUpdateLoading"
             @click="useLatestVersionTemporarily"
           >
-            {{ temporaryUpdateLoading ? "読み込み中…" : "最新バージョンを一時的に使用" }}
+            {{ temporaryUpdateLoading ? "読み込み中…" : "最新バージョンへの切り替えを再試行" }}
           </button>
           <button
             type="button"
@@ -140,10 +140,13 @@ export default {
     };
 
     window.addEventListener(API_CONNECTION_FAILURE_EVENT, handleApiConnectionFailure);
-    checkForUpdate().then((result) => {
+    checkForUpdate().then(async (result) => {
       currentVersion.value = result.currentVersion;
       latestVersion.value = result.latestVersion;
       updateAvailable.value = result.updateAvailable;
+      if (result.updateAvailable) {
+        await useLatestVersionTemporarily();
+      }
     }).catch(() => {});
 
     // Persist modal state to localStorage whenever it changes
@@ -491,4 +494,10 @@ html.dark-mode .proxy-connection-message strong {
     margin-left: 0;
   }
 }
+
+@media (max-width: 789px) {
+  #app { padding-top: 64px; padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+  .app-content { min-width: 0; }
+}
+
 </style>

@@ -140,6 +140,15 @@
   font-weight: 700;
 }
 
+/* Fullscreen is entered explicitly from the playback settings. */
+.video-container video::-webkit-media-controls-fullscreen-button {
+  display: none;
+}
+
+.video-container video:fullscreen::-webkit-media-controls-fullscreen-button {
+  display: flex;
+}
+
 .video-container {
   position: relative;
   aspect-ratio: 16 / 9;

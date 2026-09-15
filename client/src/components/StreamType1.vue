@@ -28,12 +28,7 @@
     >
       ミュートを解除する
     </div>
-    <div
-      v-show="settingsVisible"
-      class="settings-box"
-      @mouseenter="showSettingsBox"
-      @click.stop="showSettingsBox"
-    >
+    <PlayerSettings :visible="settingsVisible" @interaction="showSettingsBox">
       <label>
         繰り返し:
         <input type="checkbox" v-model="repeatEnabled" />
@@ -47,7 +42,7 @@
         />
       </label>
       <button @click="reloadStream" class="reload-button">再読込み</button>
-    </div>
+    </PlayerSettings>
     <PlayerLoading v-if="!iframeLoaded" overlay />
   </div>
   <PlayerLoading v-else-if="loading" />
@@ -55,6 +50,7 @@
 
 <script setup>
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import PlayerSettings from "@/components/PlayerSettings.vue";
 import PlayerLoading from "@/components/PlayerLoading.vue";
 import { apiRequest } from "@/services/requestManager";
 import {

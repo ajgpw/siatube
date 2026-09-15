@@ -5,6 +5,7 @@
       class="toggle-sidebar-button"
       @click="toggleSidebar"
       aria-label="サイドバーを切り替え"
+      :aria-expanded="sidebarOpen"
     >
       <div
         style="width: 100%; height: 100%; display: block; fill: currentcolor"
@@ -55,7 +56,8 @@
         placeholder="キーワードを入力..."
         autocomplete="off"
         class="search-input"
-        aria-label="Search"
+        aria-label="動画を検索"
+        enterkeyhint="search"
       />
       <button
         v-if="query"
@@ -472,4 +474,19 @@ const toggleSidebar = () => {
 .suggestions-list li:hover {
   background-color: var(--hover-bg);
 }
+
+.search-input { min-width: 0; padding-right: 44px; }
+.search-input:focus-visible { outline: 2px solid var(--accent-color); outline-offset: -2px; }
+@media (max-width: 789px) {
+  .header-wrapper { height: 64px; padding: 8px 12px; gap: 10px; }
+  .toggle-sidebar-button { display: none; }
+  .home-button { padding: 0; min-height: 44px; }
+  .brand-name { display: none; }
+  .header-search { min-width: 0; height: 44px; }
+  .search-input { font-size: 16px; }
+  .search-button { flex: 0 0 44px; padding: 0; }
+  .clear-button { right: 44px; width: 44px; padding: 0; bottom: 0; }
+  .suggestions-list li { min-height: 44px; box-sizing: border-box; overflow-wrap: anywhere; }
+}
+
 </style>

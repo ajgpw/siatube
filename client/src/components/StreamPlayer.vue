@@ -1,7 +1,7 @@
 <template>
   <div class="video-wrapper">
       <StreamType1 v-if="currentStreamType === '1'" :videoId="videoId" :videoTitle="videoTitle" @ended="onEnded" @play-autoplay-candidate="onPlayAutoplayCandidate" @autoplay-no-suitable-video="onAutoplayNoSuitableVideo" />
-      <StreamType2 v-else-if="currentStreamType === '2'" :videoId="videoId" @ended="onEnded" @play-autoplay-candidate="onPlayAutoplayCandidate" @autoplay-no-suitable-video="onAutoplayNoSuitableVideo" @loading-timeout-reload="reloadType2ViaType1" />
+      <StreamType2 v-else-if="currentStreamType === '2'" :videoId="videoId" :videoTitle="videoTitle" :videoArtist="videoArtist" :videoThumbnail="videoThumbnail" @ended="onEnded" @play-autoplay-candidate="onPlayAutoplayCandidate" @autoplay-no-suitable-video="onAutoplayNoSuitableVideo" @loading-timeout-reload="reloadType2ViaType1" />
       <StreamType3 v-else-if="currentStreamType === '3'" :videoId="videoId" @ended="onEnded" />
   </div>
 </template>
@@ -16,6 +16,8 @@ import StreamType3 from "./StreamType3.vue";
 const props = defineProps({
   videoId: { type: String, required: true },
   videoTitle: { type: String, default: "" },
+  videoArtist: { type: String, default: "" },
+  videoThumbnail: { type: String, default: "" },
   streamType: { type: String, default: "" }
 });
 

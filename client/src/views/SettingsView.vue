@@ -1488,4 +1488,19 @@ const clearLocalStorage = () => {
 :deep(html) {
   --sidebar-offset: 250px;
 }
+
+@media (max-width: 789px) {
+  .settings-modal {
+    top: 64px;
+    left: 0 !important;
+    width: 100% !important;
+    max-width: 100vw;
+    box-sizing: border-box;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .settings-modal-content { min-height: 0; }
+  .settings-modal input, .settings-modal select, .settings-modal textarea { min-width: 0; font-size: 16px; }
+  .settings-modal button { min-height: 44px; }
+}
+
 </style>

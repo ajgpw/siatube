@@ -284,4 +284,18 @@ body {
   text-decoration: underline;
   color: var(--link-hover);
 }
+
+@media (max-width: 789px) {
+  .video-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .video-item { max-width: none; min-width: 0; box-shadow: none; }
+  .info { padding: 12px; }
+  .info h3 { font-size: 1rem; }
+}
+@media (max-width: 539px) {
+  .video-list { grid-template-columns: minmax(0, 1fr); padding: 8px; }
+}
+@media (hover: none) {
+  .video-item:hover { transform: none; box-shadow: none; }
+}
+
 </style>

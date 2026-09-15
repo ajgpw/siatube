@@ -5,6 +5,8 @@
         <StreamPlayer
           :videoId="videoId"
           :videoTitle="title"
+          :videoArtist="video.author?.name || ''"
+          :videoThumbnail="video.thumbnail || ''"
           :streamType="resolvedStreamType"
           @ended="onPlayerEnded"
           @play-autoplay-candidate="onPlayAutoplayCandidate"

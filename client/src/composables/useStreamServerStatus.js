@@ -6,16 +6,15 @@ import {
 } from "@/utils/streamStatus";
 
 const STATUS_INTERVAL_MS = 60_000;
-const PROCESSING_RETRY_INTERVAL_MS = 4_000;
 
-export function useStreamServerStatus(getVideoId, { shouldRetry, onRetry }) {
+export function useStreamServerStatus(getVideoId) {
   const serverStatus = ref(null);
   const statusError = ref(false);
   const statusFetchedAt = ref(0);
   const clock = ref(Date.now());
   let statusTimer = null;
   let clockTimer = null;
-  let processingRetryTimer = null;
+  let disposed = false;
 
   const title = computed(() => {
     if (!serverStatus.value && !statusError.value) {
@@ -52,35 +51,30 @@ export function useStreamServerStatus(getVideoId, { shouldRetry, onRetry }) {
   async function updateStatus() {
     try {
       const data = await fetchStreamStatus({ retries: 0, timeout: 10_000 });
+      if (disposed) return;
       serverStatus.value = normalizeStreamStatus(data);
       statusFetchedAt.value = Date.now();
       clock.value = statusFetchedAt.value;
       statusError.value = false;
     } catch {
-      statusError.value = true;
+      if (!disposed) statusError.value = true;
     }
   }
 
   onMounted(() => {
     void updateStatus();
     statusTimer = window.setInterval(updateStatus, STATUS_INTERVAL_MS);
-    processingRetryTimer = window.setInterval(() => {
-      if (shouldRetry()) onRetry();
-    }, PROCESSING_RETRY_INTERVAL_MS);
     clockTimer = window.setInterval(() => {
       clock.value = Date.now();
     }, 1_000);
   });
 
   onBeforeUnmount(() => {
+    disposed = true;
     if (statusTimer !== null) window.clearInterval(statusTimer);
     if (clockTimer !== null) window.clearInterval(clockTimer);
-    if (processingRetryTimer !== null) {
-      window.clearInterval(processingRetryTimer);
-    }
     statusTimer = null;
     clockTimer = null;
-    processingRetryTimer = null;
   });
 
   return {

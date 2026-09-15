@@ -27,6 +27,10 @@
     <template v-else-if="isSingleStreamEntry(sources[selectedQuality])">
       <video
         ref="videoRef"
+        playsinline
+        webkit-playsinline
+        controlslist="nofullscreen"
+        @dblclick.prevent
         controls
         name="media"
         :crossorigin="selectedQualityHasM3u8() ? 'anonymous' : undefined"
@@ -55,7 +59,7 @@
         ミュートを解除する
       </div>
 
-      <div class="settings-box" v-show="settingsVisible">
+      <PlayerSettings :visible="settingsVisible" @interaction="showSettingsBox">
         <label>
           繰り返し:
           <input type="checkbox" v-model="repeatEnabled" />
@@ -64,6 +68,15 @@
           自動再生:
           <input type="checkbox" v-model="autoplayEnabled" :disabled="repeatEnabled" />
         </label>
+
+        <button
+          v-if="videoRef"
+          type="button"
+          class="pip-button"
+          :disabled="!fullscreenSupported"
+          @click="enterFullscreen"
+        >全画面</button>
+        <span v-if="fullscreenError" role="status">{{ fullscreenError }}</span>
 
         <button
           type="button"
@@ -86,6 +99,17 @@
           </select>
         </label>
 
+        <label>
+          字幕:
+          <select v-model="selectedSubtitle" class="selector" :disabled="!videoRef || !subtitleTracks.length">
+            <option value="">オフ</option>
+            <option v-for="(track, index) in subtitleTracks" :key="track.src" :value="String(index)">
+              {{ track.label || track.srclang || `字幕 ${index + 1}` }}
+            </option>
+          </select>
+          <span v-if="!subtitleTracks.length">（字幕なし）</span>
+        </label>
+
         <!-- 非 Apple デバイスでは再生速度選択を常に表示 -->
         <label v-if="!isAppleDevice()">
           再生速度:
@@ -97,7 +121,7 @@
         </label>
 
         <button @click="reloadStream" class="reload-button">再読込み</button>
-      </div>
+      </PlayerSettings>
       <div v-if="isQualitySwitching" class="block-overlay" aria-hidden="true"></div>
     </template>
 
@@ -127,6 +151,10 @@
       <template v-else>
         <video
           ref="videoRef"
+          playsinline
+          webkit-playsinline
+          controlslist="nofullscreen"
+          @dblclick.prevent
           preload="auto"
           :autoplay="autoplayEnabled"
           controls
@@ -171,7 +199,7 @@
         </audio>
       </template>
 
-      <div class="settings-box" v-show="settingsVisible">
+      <PlayerSettings :visible="settingsVisible" @interaction="showSettingsBox">
         <label>
           繰り返し:
           <input type="checkbox" v-model="repeatEnabled" />
@@ -180,6 +208,15 @@
           自動再生:
             <input type="checkbox" v-model="autoplayEnabled" :disabled="repeatEnabled" />
         </label>
+
+        <button
+          v-if="videoRef"
+          type="button"
+          class="pip-button"
+          :disabled="!fullscreenSupported"
+          @click="enterFullscreen"
+        >全画面</button>
+        <span v-if="fullscreenError" role="status">{{ fullscreenError }}</span>
 
         <button
           type="button"
@@ -202,6 +239,17 @@
           </select>
         </label>
 
+        <label>
+          字幕:
+          <select v-model="selectedSubtitle" class="selector" :disabled="!videoRef || !subtitleTracks.length">
+            <option value="">オフ</option>
+            <option v-for="(track, index) in subtitleTracks" :key="track.src" :value="String(index)">
+              {{ track.label || track.srclang || `字幕 ${index + 1}` }}
+            </option>
+          </select>
+          <span v-if="!subtitleTracks.length">（字幕なし）</span>
+        </label>
+
         <!-- 非 Apple デバイスでは再生速度選択を常に表示 -->
         <label v-if="!isAppleDevice()">
           再生速度:
@@ -213,7 +261,7 @@
         </label>
 
         <button @click="reloadStream" class="reload-button">再読込み</button>
-      </div>
+      </PlayerSettings>
       <div v-if="isQualitySwitching" class="block-overlay" aria-hidden="true"></div>
     </template>
     <PlayerLoading
@@ -223,11 +271,15 @@
   </div>
   <PlayerLoading v-else-if="loading">
     <div class="stream-status-panel">
-      <div class="stream-status-title">{{ streamStatusTitle }}</div>
-      <div v-if="streamStatusDetail" class="stream-status-detail">
+      <div class="stream-status-title">{{ requestStatusTitle }}</div>
+      <div v-if="requestState.phase === 'cooldown'" class="stream-status-detail">
+        あと約{{ cooldownSeconds }}秒で取得を開始します。
+      </div>
+      <div v-else class="stream-status-detail">{{ streamStatusTitle }}</div>
+      <div v-if="requestState.phase === 'requesting' && streamStatusDetail" class="stream-status-detail">
         {{ streamStatusDetail }}
       </div>
-      <div v-if="estimatedWaitText" class="stream-status-wait">
+      <div v-if="requestState.phase === 'requesting' && estimatedWaitText" class="stream-status-wait">
         おおよその待ち時間: {{ estimatedWaitText }}
       </div>
     </div>
@@ -236,15 +288,17 @@
 
 <script setup>
 import { computed, ref, watch, onMounted, nextTick, onBeforeUnmount } from "vue";
+import { createVideoFullscreen } from "@/utils/videoFullscreen";
+import PlayerSettings from "@/components/PlayerSettings.vue";
 import ExternalHlsPlayer from "@/components/ExternalHlsPlayer.vue";
 import PlayerLoading from "@/components/PlayerLoading.vue";
 import {
-  cancelStreamRequest,
   isVideoStreamError,
   stream as fetchStream,
 } from "@/services/siatubeApi";
 import { setupSyncPlayback } from "@/components/syncPlayback";
 import { createPlaybackController } from "@/composables/playbackController";
+import { useMediaSessionMetadata } from "@/composables/useMediaSessionMetadata";
 import { useStreamServerStatus } from "@/composables/useStreamServerStatus";
 import { parseStream2Response } from "@/utils/type2StreamParser";
 import {
@@ -266,7 +320,8 @@ import {
   revokeSubtitleTracks,
   selectPlaybackSubtitleTracks,
 } from "@/utils/subtitleTracks";
-import { claimType2StreamRequestSlot } from "@/utils/type2StreamRequestCooldown";
+import { bindSubtitleSelection } from "@/utils/subtitleSelection";
+import { createType2StreamRequest } from "@/utils/type2StreamRequest";
 import {
   getExternalM3u8Url,
   isAppleDevice as isAppleDeviceCheck,
@@ -281,8 +336,18 @@ import {
 } from "@/utils/streamType2Fallback";
 
 const props = defineProps({
-  videoId: { type: String, required: true }
+  videoId: { type: String, required: true },
+  videoTitle: { type: String, default: "" },
+  videoArtist: { type: String, default: "" },
+  videoThumbnail: { type: String, default: "" },
 });
+const { updateMetadata } = useMediaSessionMetadata(() => ({
+  videoId: props.videoId,
+  title: props.videoTitle,
+  artist: props.videoArtist,
+  thumbnailUrl: props.videoThumbnail,
+}));
+
 const emit = defineEmits([
   "ended",
   "play-autoplay-candidate",
@@ -324,11 +389,27 @@ const selectedQuality = ref("");
 const availableQualities = ref([]);
 const qualityLabels = ref({}); // Map from internal key to display label
 const subtitleTracks = ref([]);
+const selectedSubtitle = ref("");
+let subtitleSelection = null;
 const selectedPlaybackRate = ref(1.0);
 const playbackRates = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 3, 4];
 const diffText = ref("0");
 const videoRef = ref(null);
 const audioRef = ref(null);
+let fullscreenController = null;
+const fullscreenSupported = ref(false);
+const fullscreenError = ref('');
+
+async function enterFullscreen(event) {
+  // Close the mobile settings dialog before entering the native video player.
+  event.currentTarget.closest('dialog')?.close();
+  fullscreenError.value = '';
+  const controller = fullscreenController;
+  if (controller && !await controller.enter() && controller === fullscreenController) {
+    fullscreenError.value = '全画面に切り替えられませんでした。動画の再生後にもう一度お試しください。';
+  }
+}
+
 const pictureInPictureActive = ref(false);
 const pictureInPictureSupported = computed(() => {
   const video = videoRef.value;
@@ -358,26 +439,21 @@ let initialPlaybackRecovery = null;
 let initialPlaybackRecoveryRunning = false;
 const repeatEnabled = ref(false);
 const autoplayEnabled = ref(loadAutoplay());
-const loading = ref(false);
+const requestState = ref({ phase: "idle", waitUntil: 0 });
+const loading = computed(() => ["cooldown", "requesting", "preparing"].includes(requestState.value.phase));
 const playerReady = ref(false);
 const playerBuffering = ref(false);
 const playbackEstablished = ref(false);
 const { estimatedWaitText, statusClock, streamStatusDetail, streamStatusTitle } =
-  useStreamServerStatus(
-    () => props.videoId,
-    {
-      shouldRetry: () => Boolean(
-        loading.value &&
-        props.videoId &&
-        !error.value &&
-        !playbackEstablished.value
-      ),
-      onRetry: () => {
-        cancelStreamRequest(props.videoId, "siatube");
-        fetchStreamUrl(props.videoId, true);
-      },
-    },
-  );
+  useStreamServerStatus(() => props.videoId);
+const requestStatusTitle = computed(() => ({
+  cooldown: "次のストリームURL取得まで待機しています…",
+  requesting: "ストリームURLを取得しています…",
+  preparing: "取得したストリームを準備しています…",
+}[requestState.value.phase] || ""));
+const cooldownSeconds = computed(() => Math.max(
+  0, Math.ceil((requestState.value.waitUntil - statusClock.value) / 1000),
+));
 const muxedFallbackSources = ref([]);
 const externalM3u8Url = computed(() => getExternalM3u8Url(
   sources.value, availableQualities.value, selectedQuality.value, muxedFallbackSources.value,
@@ -396,7 +472,6 @@ const isQualitySwitching = ref(false);
 const showUnmutePrompt = ref(false);
 const settingsVisible = ref(true);
 const USER_GESTURE_KEY = 'yt_user_gesture_v1';
-const SINGLE_QUALITY_PLACEHOLDER = "111p";
 let _onEndedAttached = false;
 let streamRequestSequence = 0;
 let playbackConfirmationTimer = null;
@@ -654,6 +729,10 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  ++streamRequestSequence;
+  subtitleSelection?.dispose();
+  fullscreenController?.dispose();
+  streamRequest.dispose();
   clearInitialPlaybackRecovery();
   clearM3u8LoadTimeout();
   clearPlaybackConfirmationTimer();
@@ -953,20 +1032,28 @@ function applyVideoSources(videoEl, sourcesList) {
 }
 
 function applySubtitleTracks(videoEl, tracks) {
+  subtitleSelection?.dispose();
+  subtitleSelection = null;
   if (!videoEl) return;
   try {
     videoEl.querySelectorAll(":scope > track[data-type2-subtitle]").forEach((track) => track.remove());
-    for (const track of Array.isArray(tracks) ? tracks : []) {
+    for (const [index, track] of (Array.isArray(tracks) ? tracks : []).entries()) {
       if (!track?.src) continue;
       const trackEl = document.createElement("track");
-      trackEl.dataset.type2Subtitle = "1";
+      trackEl.dataset.type2Subtitle = String(index);
       trackEl.src = track.src;
       trackEl.srclang = track.srclang || "ja";
       trackEl.label = track.label || trackEl.srclang;
       trackEl.kind = track.kind || "subtitles";
-      trackEl.default = Boolean(track.default);
+      trackEl.default = false;
       videoEl.appendChild(trackEl);
+      trackEl.track.mode = "disabled";
     }
+    subtitleSelection = bindSubtitleSelection(videoEl, () => {
+      if (selectedSubtitle.value === "") return null;
+      return Array.from(videoEl.querySelectorAll(":scope > track[data-type2-subtitle]"))
+        .find((track) => track.dataset.type2Subtitle === selectedSubtitle.value)?.track;
+    });
   } catch (e) {}
 }
 
@@ -1031,26 +1118,6 @@ watch(autoplayEnabled, (val) => {
   try { saveAutoplay(!!val); } catch (e) {}
 });
 
-function clearType2SrcRepeated() {
-  let count = 0;
-  const interval = setInterval(() => {
-    try {
-      if (videoRef.value) {
-        videoRef.value.removeAttribute("src");
-        videoRef.value.load();
-      }
-      if (audioRef.value) {
-        audioRef.value.removeAttribute("src");
-        audioRef.value.load();
-      }
-    } catch (e) {}
-    count++;
-    if (count >= 2) {
-      clearInterval(interval);
-    }
-  }, 200);
-}
-
 function reloadSrc() {
   const sel = selectedQuality.value;
   const entry = sources.value[sel];
@@ -1109,10 +1176,19 @@ function checkPlayback() {
   }
 }
 
+function capturePlaybackSelection() {
+  const sequence = streamRequestSequence;
+  const quality = selectedQuality.value;
+  const renderKey = playerRenderKey.value;
+  return () => sequence === streamRequestSequence &&
+    quality === selectedQuality.value && renderKey === playerRenderKey.value;
+}
+
 // single-stream 切替時の共通セットアップ（再生位置を維持）
 function applyHlsSetup(prevTime = 0) {
+  const isCurrentSelection = capturePlaybackSelection();
   isQualitySwitching.value = true;
-  setTimeout(() => { isQualitySwitching.value = false; }, 1000);
+  setTimeout(() => { if (isCurrentSelection()) isQualitySwitching.value = false; }, 1000);
 
   // pause before src swap (テンプレート側で :key により再レンダリングされる)
   try { if (videoRef.value) { prevTime = videoRef.value.currentTime || prevTime; videoRef.value.pause(); } } catch (e) {}
@@ -1127,6 +1203,7 @@ function applyHlsSetup(prevTime = 0) {
   } catch (e) {}
 
   nextTick(() => {
+    if (!isCurrentSelection()) return;
     const entry = sources.value[selectedQuality.value];
     if (videoRef.value && isSingleStreamEntry(entry)) {
       applyVideoSources(videoRef.value, getSingleStreamSources(entry));
@@ -1137,7 +1214,7 @@ function applyHlsSetup(prevTime = 0) {
       if (videoRef.value) {
         // HLS は currentTime 設定が成功しないこともあるため複数回試す
         videoRef.value.currentTime = prevTime;
-        setTimeout(() => { try { if (videoRef.value) videoRef.value.currentTime = prevTime; } catch (e) {} }, 250);
+        setTimeout(() => { if (!isCurrentSelection()) return; try { if (videoRef.value) videoRef.value.currentTime = prevTime; } catch (e) {} }, 250);
       }
     } catch (e) {}
 
@@ -1179,9 +1256,7 @@ function applyHlsSetup(prevTime = 0) {
 
 // selectedQuality の監視: 選択先が HLS(url) を持つかどうかで挙動を分ける
 watch(selectedQuality, (newQuality) => {
-  if (newQuality === SINGLE_QUALITY_PLACEHOLDER && sources.value[newQuality]?.isPlaceholder) {
-    return;
-  }
+  const isCurrentSelection = capturePlaybackSelection();
   clearPlaybackConfirmationTimer();
   m3u8PlaybackAttempted.value = false;
   playbackEstablished.value = false;
@@ -1221,8 +1296,9 @@ watch(selectedQuality, (newQuality) => {
   // Audio-only
   if (isAudioOnlyEntry(entry)) {
     isQualitySwitching.value = true;
-    setTimeout(() => { isQualitySwitching.value = false; }, 1000);
+    setTimeout(() => { if (isCurrentSelection()) isQualitySwitching.value = false; }, 1000);
     nextTick(() => {
+      if (!isCurrentSelection()) return;
       try {
         if (audioRef.value && entry.audio?.url) {
           const source = audioRef.value.querySelector('source');
@@ -1265,6 +1341,7 @@ watch(selectedQuality, (newQuality) => {
     separateAvKey.value += 1;
     isQualitySwitching.value = true;
     setTimeout(() => {
+      if (!isCurrentSelection()) return;
       isQualitySwitching.value = false;
     }, 4000);
     let prevTime = 0;
@@ -1276,7 +1353,7 @@ watch(selectedQuality, (newQuality) => {
       audioRef.value.pause();
     }
     nextTick(() => {
-      clearType2SrcRepeated();
+      if (!isCurrentSelection()) return;
       setupSyncPlayback(
         videoRef.value,
         audioRef.value,
@@ -1324,11 +1401,13 @@ watch(selectedQuality, (newQuality) => {
         audioRef.value.addEventListener('canplay', checkPlayback, { once: true });
       }
       setTimeout(() => {
+        if (!isCurrentSelection()) return;
         try {
           if (videoRef.value) videoRef.value.currentTime = prevTime;
           if (audioRef.value) audioRef.value.currentTime = prevTime;
         } catch (e) {}
         setTimeout(() => {
+          if (!isCurrentSelection()) return;
           try {
             if (videoRef.value) videoRef.value.currentTime = prevTime;
             if (audioRef.value) audioRef.value.currentTime = prevTime;
@@ -1352,8 +1431,13 @@ function applyRepeatAndAutoplay() {
   }
 }
 
-async function fetchStreamUrl(id, forceRefresh = false) {
-  const sequence = ++streamRequestSequence;
+function resetStreamPlayback() {
+  ++streamRequestSequence;
+  clearType2LoadingReloadTimer();
+  cancelAutoplay();
+  detachBufferListeners();
+  detachLoopBufferListeners();
+  isQualitySwitching.value = false;
   clearInitialPlaybackRecovery();
   clearM3u8LoadTimeout();
   clearPlaybackConfirmationTimer();
@@ -1369,7 +1453,6 @@ async function fetchStreamUrl(id, forceRefresh = false) {
   selectedPlaybackRate.value = 1.0;
   diffText.value = "0";
   availableQualities.value = [];
-  loading.value = true;
   playerReady.value = false;
   playerBuffering.value = false;
   playbackEstablished.value = false;
@@ -1380,118 +1463,100 @@ async function fetchStreamUrl(id, forceRefresh = false) {
   hasM3u8.value = false;
   revokeSubtitleTracks(subtitleTracks.value);
   subtitleTracks.value = [];
+  selectedSubtitle.value = "";
+  subtitleSelection?.sync();
+}
 
-  try {
-    // タイプ2の全動画IDでAPIリクエスト間隔を共有する。
-    while (true) {
-      const cooldownMs = claimType2StreamRequestSlot();
-      if (cooldownMs === 0) break;
-      await new Promise((resolve) => window.setTimeout(resolve, cooldownMs));
-      if (sequence !== streamRequestSequence || id !== props.videoId) return;
-    }
-
-    const data = await fetchStream(id, {
-      forceRefresh,
-      origin: "siatube",
-      retries: 1,
-      timeout: 30000,
-    });
-    if (sequence !== streamRequestSequence || id !== props.videoId) return;
-
-    const locale = typeof navigator !== "undefined" ? navigator.language : "ja";
-    const normalizedFormats = normalizeStreamFormats(data, locale);
-    const parsed = parseStream2Response(
-      { formats: normalizedFormats },
-      {
-        allowM3u8: nativeHlsSupported.value,
-      },
-    );
-    const rawSubtitleTracks = selectPlaybackSubtitleTracks(
-      extractSubtitleTracks(data, locale)
-    );
-    localizeSubtitleTracks(rawSubtitleTracks).then((localizedTracks) => {
-      if (sequence !== streamRequestSequence || id !== props.videoId) {
-        revokeSubtitleTracks(localizedTracks);
-        return;
-      }
-      revokeSubtitleTracks(subtitleTracks.value);
-      subtitleTracks.value = localizedTracks;
-      applySubtitleTracks(videoRef.value, localizedTracks);
-    });
-    if (!parsed || Object.keys(parsed.sources || {}).length === 0) {
-      error.value = "利用可能なストリームがありません。";
-      loading.value = false;
+async function applyStreamResponse(data, { id, isCurrent }) {
+  const sequence = streamRequestSequence;
+  const locale = typeof navigator !== "undefined" ? navigator.language : "ja";
+  const normalizedFormats = normalizeStreamFormats(data, locale);
+  const parsed = parseStream2Response(
+    { formats: normalizedFormats },
+    {
+      allowM3u8: nativeHlsSupported.value,
+    },
+  );
+  const rawSubtitleTracks = selectPlaybackSubtitleTracks(
+    extractSubtitleTracks(data, locale)
+  );
+  localizeSubtitleTracks(rawSubtitleTracks).then((localizedTracks) => {
+    if (sequence !== streamRequestSequence || id !== props.videoId) {
+      revokeSubtitleTracks(localizedTracks);
       return;
     }
-
-    sources.value = parsed.sources;
-    qualityLabels.value = parsed.qualityLabels || {};
-    availableQualities.value = parsed.availableQualities || [];
-    muxedFallbackSources.value = Array.isArray(parsed.muxedFallbackSources)
-      ? parsed.muxedFallbackSources
-      : [];
-    hasM3u8.value = !!parsed.hasM3u8;
-    const preferred = (() => {
-      try { return loadPreferredQuality(); } catch (e) { return "auto"; }
-    })();
-    const initialQuality = selectBestPlayableQuality(
-      sources.value,
-      availableQualities.value,
-      preferred,
-      { useM3u8: useM3u8Playback() }
-    );
-    const resolvedInitialQuality = initialQuality || parsed.defaultQuality || availableQualities.value[0] || "";
-    if (availableQualities.value.length === 1 && resolvedInitialQuality) {
-      const actualSources = sources.value;
-      const actualQualities = availableQualities.value;
-      sources.value = {
-        [SINGLE_QUALITY_PLACEHOLDER]: {
-          url: "https://invalid.invalid/stream-111p.mp4",
-          mimeType: "video/mp4",
-          isPlaceholder: true,
-        },
-        ...actualSources,
-      };
-      availableQualities.value = [SINGLE_QUALITY_PLACEHOLDER, ...actualQualities];
-      selectedQuality.value = SINGLE_QUALITY_PLACEHOLDER;
-      await nextTick();
-      sources.value = actualSources;
-      availableQualities.value = actualQualities;
-    }
-    selectedQuality.value = resolvedInitialQuality;
-    await nextTick();
-    playerRenderKey.value += 1;
-    beginInitialPlaybackRecovery(sequence, id, selectedQuality.value);
-
-    // 自動再生が有効なら候補IDだけ確認する（プリフェッチは行わない）
-    try {
-      if (autoplayEnabled.value) {
-        // noop: 候補は ended 時にその場で選ぶ
-        getAutoplayCandidateId();
-      }
-    } catch (e) {}
-
-  } catch (err) {
-    if (sequence !== streamRequestSequence || id !== props.videoId) return;
-    loading.value = false;
-    if (isVideoStreamError(err)) {
-      errorCode.value = err.code || "";
-      const expiresAt = Date.parse(err.payload?.expiresAt || "");
-      errorExpiresAt.value = Number.isFinite(expiresAt) ? expiresAt : 0;
-      error.value = err.payload?.message || err.message;
-    } else if (err?.connectionFailure) {
-      error.value = err.message;
-    } else if (err && err.name === 'AbortError') {
-      error.value = "ストリームURLの取得に失敗しました (タイムアウト)";
-    } else {
-      error.value = "ストリームURLの取得に失敗しました (fetch error)";
-    }
-    sources.value = {};
-    availableQualities.value = [];
-    selectedQuality.value = "";
-  } finally {
-    if (sequence === streamRequestSequence) loading.value = false;
+    revokeSubtitleTracks(subtitleTracks.value);
+    subtitleTracks.value = localizedTracks;
+    applySubtitleTracks(videoRef.value, localizedTracks);
+  }).catch(() => { /* 字幕の失敗は動画の描画を妨げない */ });
+  if (!parsed || Object.keys(parsed.sources || {}).length === 0) {
+    throw new Error("利用可能なストリームがありません。");
   }
+
+  sources.value = parsed.sources;
+  qualityLabels.value = parsed.qualityLabels || {};
+  availableQualities.value = parsed.availableQualities || [];
+  muxedFallbackSources.value = Array.isArray(parsed.muxedFallbackSources)
+    ? parsed.muxedFallbackSources
+    : [];
+  hasM3u8.value = !!parsed.hasM3u8;
+  const preferred = (() => {
+    try { return loadPreferredQuality(); } catch (e) { return "auto"; }
+  })();
+  const initialQuality = selectBestPlayableQuality(
+    sources.value,
+    availableQualities.value,
+    preferred,
+    { useM3u8: useM3u8Playback() }
+  );
+  const resolvedInitialQuality = initialQuality || parsed.defaultQuality || availableQualities.value[0] || "";
+  if (!resolvedInitialQuality || !sources.value[resolvedInitialQuality]) {
+    throw new Error("利用可能なストリームがありません。");
+  }
+  // Commit the render key together with the sources, before the quality watcher runs.
+  playerRenderKey.value += 1;
+  selectedQuality.value = resolvedInitialQuality;
+  await nextTick();
+  if (!isCurrent()) return;
+  beginInitialPlaybackRecovery(sequence, id, selectedQuality.value);
+
+  // 自動再生が有効なら候補IDだけ確認する（プリフェッチは行わない）
+  try {
+    if (autoplayEnabled.value) {
+      // noop: 候補は ended 時にその場で選ぶ
+      getAutoplayCandidateId();
+    }
+  } catch (e) {}
+}
+
+function handleStreamRequestError(err) {
+  if (isVideoStreamError(err)) {
+    errorCode.value = err.code || "";
+    const expiresAt = Date.parse(err.payload?.expiresAt || "");
+    errorExpiresAt.value = Number.isFinite(expiresAt) ? expiresAt : 0;
+    error.value = err.payload?.message || err.message;
+  } else if (err?.connectionFailure) {
+    error.value = err.message;
+  } else if (err && err.name === 'AbortError') {
+    error.value = "ストリームURLの取得に失敗しました (タイムアウト)";
+  } else {
+    error.value = err?.message || "ストリームURLの取得に失敗しました (fetch error)";
+  }
+  sources.value = {};
+  availableQualities.value = [];
+  selectedQuality.value = "";
+}
+
+const streamRequest = createType2StreamRequest({
+  fetchStream,
+  onState: (state) => { requestState.value = state; },
+  onStart: resetStreamPlayback,
+  onResponse: applyStreamResponse,
+  onError: handleStreamRequestError,
+});
+
+function fetchStreamUrl(id, forceRefresh = false) {
+  return streamRequest.load(id, forceRefresh);
 }
 
 function markPlayerReady(event) {
@@ -1507,6 +1572,7 @@ function markPlayerReady(event) {
 }
 
 function markPlayerPlaying(event) {
+  updateMetadata();
   m3u8PlaybackAttempted.value = true;
   playerReady.value = true;
   playerBuffering.value = false;
@@ -1562,7 +1628,8 @@ watch(
     if (newId) {
       fetchStreamUrl(newId);
     } else {
-      // videoId が空のときは取得をスキップ
+      streamRequest.cancel();
+      resetStreamPlayback();
     }
   },
   { immediate: true }
@@ -1573,8 +1640,16 @@ watch(selectedPlaybackRate, () => {
   if (audioRef.value) audioRef.value.playbackRate = selectedPlaybackRate.value;
 });
 
+watch(selectedSubtitle, () => subtitleSelection?.sync(), { flush: "sync" });
+
 // videoRef の変化を監視して ended リスナの attach/detach を行う
 watch(videoRef, (newEl, oldEl) => {
+  fullscreenController?.dispose();
+  fullscreenController = newEl ? createVideoFullscreen(newEl) : null;
+  fullscreenSupported.value = fullscreenController?.supported ?? false;
+  fullscreenError.value = '';
+  subtitleSelection?.dispose();
+  subtitleSelection = null;
   detachPictureInPictureListeners(oldEl);
   if (oldEl && _onEndedAttached) {
     try { oldEl.removeEventListener('ended', _onEnded); } catch (e) {}

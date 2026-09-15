@@ -574,3 +574,13 @@ p {
     animation: none;
   }
 }
+
+@media (max-width: 789px) {
+  .yt-watch-page { padding: 12px; gap: 16px; }
+  .yt-watch-page .channel-info { flex-wrap: wrap; }
+  .yt-watch-page .channel-text { flex: 1; }
+  .yt-watch-page .channel-controls { width: 100%; margin-left: 0; flex-wrap: wrap; }
+  .yt-watch-page .channel-controls button { min-height: 44px; }
+  .yt-watch-page .video-title { overflow-wrap: anywhere; }
+  .yt-watch-page .video-info { min-width: 0; }
+}
