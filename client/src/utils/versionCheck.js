@@ -2,9 +2,9 @@ import currentVersionSource from "../../version.txt?raw";
 import { loadRequestProxy, proxiedRequestUrl } from "./requestProxy.js";
 
 export const VERSION_SOURCE_URL =
-  "https://raw.githubusercontent.com/ajgpw/youtube/refs/heads/main/client/version.txt";
+  "https://raw.githubusercontent.com/ajgpw/siatube/refs/heads/main/client/version.txt";
 export const LATEST_BUILD_URL =
-  "https://raw.githubusercontent.com/ajgpw/youtube/refs/heads/main/siatube-full.html.txt";
+  "https://raw.githubusercontent.com/ajgpw/siatube/refs/heads/main/siatube-full.html.txt";
 
 export function normalizeVersion(value) {
   return String(value ?? "")
