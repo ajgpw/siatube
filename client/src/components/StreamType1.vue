@@ -52,7 +52,7 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import PlayerSettings from "@/components/PlayerSettings.vue";
 import PlayerLoading from "@/components/PlayerLoading.vue";
-import { apiRequest } from "@/services/requestManager";
+import { youtubeEducationStream } from "@/services/siatubeApi";
 import {
   getAutoplayCandidateId,
   pushToAutoplayHistory,
@@ -63,7 +63,6 @@ import {
   saveAutoplay,
 } from "@/utils/settingsManager";
 import {
-  createYoutubeEducationEmbedUrl,
   ensureYoutubeEducationPlayerApi,
   loadYoutubeEducationPlayerData,
 } from "@/utils/youtubeEducationPlayer";
@@ -257,16 +256,17 @@ function initializePlayer(sequence) {
   });
 }
 
-async function fetchFallbackStream(id, sequence) {
-  const data = await apiRequest({
-    params: { stream: id },
+async function fetchEducationStream(id, sequence) {
+  const data = await youtubeEducationStream(id, {
     retries: 1,
     timeout: 60000,
-    jsonpFallback: false,
   });
   if (sequence !== requestSequence) return;
-  if (!data?.url) throw new Error("ストリームURLが空です (JSON)");
-  streamUrl.value = data.url;
+  const url = typeof data === "string" ? data : data?.url;
+  if (typeof url !== "string" || !url.trim()) {
+    throw new Error("YouTube EducationのURLが空です (JSON)");
+  }
+  streamUrl.value = url;
   iframeRenderKey.value += 1;
 }
 
@@ -279,6 +279,9 @@ async function fetchStream(id, forceRefresh = false) {
   iframeLoaded.value = false;
 
   try {
+    await fetchEducationStream(id, sequence);
+    if (sequence !== requestSequence) return;
+
     let playerData = null;
     try {
       playerData = await loadYoutubeEducationPlayerData({ forceRefresh });
@@ -287,17 +290,7 @@ async function fetchStream(id, forceRefresh = false) {
     }
     if (sequence !== requestSequence) return;
 
-    if (!playerData) {
-      await fetchFallbackStream(id, sequence);
-      return;
-    }
-
-    streamUrl.value = createYoutubeEducationEmbedUrl(
-      id,
-      playerData.parameterText,
-      { autoplay: autoplayEnabled.value },
-    );
-    iframeRenderKey.value += 1;
+    if (!playerData) return;
     await nextTick();
     if (sequence !== requestSequence) return;
 

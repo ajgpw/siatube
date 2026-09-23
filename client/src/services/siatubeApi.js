@@ -1,4 +1,6 @@
 import { SIATUBE_API_ORIGIN } from "../api.js";
+import { guardedGet } from "../guard/guarded-request.js";
+import { redactGuardPayload, redactGuardUrl } from "../guard/guard-session.js";
 import { loadDisableTimeouts } from "../utils/settingsManager.js";
 import {
   isRequestProxyLoadFailure,
@@ -14,7 +16,6 @@ import {
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_RETRIES = 1;
 const RETRY_DELAY_MS = 250;
-const RATE_LIMIT_RETRY_DELAY_MS = 2_100;
 const STREAM_CACHE_TTL_MS = 5 * 60 * 1_000;
 export const API_CONNECTION_FAILURE_EVENT = "siatube-api-connection-failure";
 export const VIDEO_STREAM_ERROR_CODES = new Set([
@@ -176,11 +177,10 @@ function abortError(signal, url = null) {
   return error;
 }
 
-function timeoutError(timeout, url, cause) {
+function timeoutError(timeout, url) {
   return new SiaTubeApiError(`Request timed out after ${timeout}ms`, {
     code: "TIMEOUT",
     url,
-    cause,
     retryable: true,
   });
 }
@@ -232,7 +232,6 @@ async function readJson(response, url) {
           code: "HTTP_ERROR",
           status,
           url,
-          cause,
           retryable: status === null || status === 408 || status === 429 || status >= 500,
         },
       );
@@ -241,7 +240,6 @@ async function readJson(response, url) {
       code: "INVALID_JSON",
       status,
       url,
-      cause,
       retryable: true,
     });
   }
@@ -250,18 +248,19 @@ async function readJson(response, url) {
 function validatePayload(payload, response, url) {
   const status = Number(response?.status) || null;
   const ok = response?.ok ?? (status !== null && status >= 200 && status < 300);
+  const safePayload = redactGuardPayload(payload);
 
   if (!ok) {
     throw new SiaTubeApiError(
       errorMessage(
-        payload,
+        safePayload,
         status === null ? "SiaTube API request failed" : `SiaTube API returned HTTP ${status}`,
       ),
       {
         code: errorCode(payload, "HTTP_ERROR"),
         status,
         url,
-        payload,
+        payload: safePayload,
         retryable: status === null || status === 408 || status === 429 || status >= 500,
       },
     );
@@ -272,7 +271,7 @@ function validatePayload(payload, response, url) {
       code: errorCode(payload, "API_ERROR"),
       status,
       url,
-      payload,
+      payload: safePayload,
       retryable: false,
     });
   }
@@ -282,13 +281,13 @@ function validatePayload(payload, response, url) {
       code: "UNAVAILABLE",
       status,
       url,
-      payload,
+      payload: safePayload,
       unavailable: true,
       retryable: false,
     });
   }
 
-  return payload;
+  return safePayload;
 }
 
 async function performGet(url, options, proxyUrl, proxyTransport) {
@@ -297,21 +296,33 @@ async function performGet(url, options, proxyUrl, proxyTransport) {
       proxyUrl,
       signal: options.signal,
     });
-    const status = Number(result.status);
-    const ok = result.ok === true && status >= 200 && status < 300;
+    let status = Number(result.status);
     const errorText = typeof result.error === "string" && result.error.trim()
       ? result.error
       : `JSONP proxy returned HTTP ${status}`;
-    const payload = result.ok
+    const payload = Object.prototype.hasOwnProperty.call(result, "data")
       ? result.data
       : { error: errorText };
+    // Older GAS JSONP deployments return the upstream payload directly and
+    // therefore lose the HTTP status. The guard code is unambiguous enough to
+    // restore the documented status during that migration period.
+    if (status === 200 && payload?.code === "CHALLENGE_REQUIRED") status = 403;
+    if (status === 200 && payload?.code === "RATE_LIMITED") status = 429;
+    const ok = result.ok === true && status >= 200 && status < 300;
     return {
       ok,
       status,
-      json: async () => payload,
+      payload,
+      guardAction: null,
     };
   }
-  return fetch(proxiedRequestUrl(url, { url: proxyUrl }), options);
+  const response = await fetch(proxiedRequestUrl(url, { url: proxyUrl }), options);
+  return {
+    ok: response.ok,
+    status: response.status,
+    payload: await readJson(response, redactGuardUrl(url)),
+    guardAction: response.headers?.get?.("X-Guard-Action") || null,
+  };
 }
 
 function finalizeRequestError(error, proxyUrl, proxyTransport) {
@@ -382,13 +393,14 @@ export async function getJson(path, options = {}) {
   } catch {}
   const retries = normalizeRetries(options.retries);
   const url = buildUrl(path, query).toString();
+  const safeUrl = redactGuardUrl(url);
   const proxyUrl = loadRequestProxy().url;
   const proxyTransport = requestProxyTransport(
     Boolean(proxyUrl) && loadRequestProxyJsonp(),
   );
 
   if (signal?.aborted) {
-    throw finalizeRequestError(abortError(signal, url), proxyUrl, proxyTransport);
+    throw finalizeRequestError(abortError(signal, safeUrl), proxyUrl, proxyTransport);
   }
 
   let lastError = null;
@@ -407,7 +419,7 @@ export async function getJson(path, options = {}) {
     }
 
     try {
-      const response = await performGet(url, {
+      const send = (targetUrl, overrides = {}) => performGet(targetUrl, {
         method: "GET",
         headers: {
           Accept: "application/json",
@@ -415,34 +427,43 @@ export async function getJson(path, options = {}) {
         },
         credentials: "omit",
         redirect: "follow",
-        ...(cache ? { cache } : {}),
-        signal: controller.signal,
+        ...(overrides.cache || cache ? { cache: overrides.cache || cache } : {}),
+        signal: overrides.signal || controller.signal,
       }, proxyUrl, proxyTransport);
-      const payload = await readJson(response, url);
-      const result = validatePayload(payload, response, url);
+      const response = await guardedGet(url, {
+        send,
+        signal: controller.signal,
+      });
+      const result = validatePayload(response.payload, response, safeUrl);
       if (proxyUrl) {
         recordRequestProxyLoadSuccess(proxyUrl, { transport: proxyTransport });
       }
       return result;
     } catch (cause) {
       if (signal?.aborted) {
-        lastError = abortError(signal, url);
+        lastError = abortError(signal, safeUrl);
       } else if (timedOut) {
-        lastError = timeoutError(timeout, url, cause);
+        lastError = timeoutError(timeout, safeUrl);
       } else if (cause instanceof SiaTubeApiError) {
         lastError = cause;
       } else if (cause?.code === "INVALID_JSON") {
         lastError = new SiaTubeApiError("SiaTube API returned invalid JSONP", {
           code: "INVALID_JSON",
-          url,
-          cause,
+          url: safeUrl,
           retryable: true,
         });
+      } else if (typeof cause?.code === "string") {
+        lastError = new SiaTubeApiError(cause.message, {
+          code: cause.code,
+          status: cause.status,
+          url: safeUrl,
+          retryable: cause.retryable === true,
+        });
+        if (cause.name === "AbortError") lastError.name = "AbortError";
       } else {
         lastError = new SiaTubeApiError("Failed to reach the SiaTube API", {
           code: "NETWORK_ERROR",
-          url,
-          cause,
+          url: safeUrl,
           retryable: true,
         });
       }
@@ -454,8 +475,9 @@ export async function getJson(path, options = {}) {
     if (!lastError.retryable || attempt >= retries) {
       throw finalizeRequestError(lastError, proxyUrl, proxyTransport);
     }
-    const retryDelay = lastError.status === 429
-      ? RATE_LIMIT_RETRY_DELAY_MS
+    const retryAfter = Number(lastError.payload?.retryAfter);
+    const retryDelay = lastError.status === 429 && Number.isFinite(retryAfter) && retryAfter >= 0
+      ? retryAfter * 1_000 + Math.floor(Math.random() * 251)
       : RETRY_DELAY_MS * (attempt + 1);
     try {
       await delay(retryDelay, signal);
@@ -636,6 +658,18 @@ export function stream(videoId, options = {}) {
   }
 
   return withSignal(pending, options.signal);
+}
+
+export function youtubeEducationStream(videoId, options = {}) {
+  const id = requireString(videoId, "videoId");
+  if (!/^[A-Za-z0-9_-]{11}$/.test(id)) {
+    throw validationError("videoId must be an 11-character YouTube video ID");
+  }
+  return getJson(`/api/stream/youtubeeducation/${pathSegment(id, "videoId")}`, {
+    ...requestOptions(options),
+    query: { origin: "siatube" },
+    cache: "no-store",
+  });
 }
 
 export function cancelStreamRequest(videoId, origin = "") {

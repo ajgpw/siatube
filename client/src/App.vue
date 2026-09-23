@@ -6,6 +6,10 @@
       :sidebar-open="sidebarOpen"
     />
     <Sidebar :open="sidebarOpen" :is-watch-page="route.path === '/watch'" />
+    <div v-if="guardProgressMessage" class="guard-progress" role="status" aria-live="polite">
+      <span class="guard-progress-spinner" aria-hidden="true"></span>
+      {{ guardProgressMessage }}
+    </div>
     <main class="app-content" :class="{ 'sidebar-closed': !sidebarOpen }">
       <div v-if="updateAvailable && temporaryUpdateError" class="version-warning" role="alert">
         <div>
@@ -68,6 +72,7 @@ import { ref, computed, provide, watch, onBeforeUnmount } from 'vue';
 import { loadDisplayMode, computeIsDarkFromMode } from '@/utils/settingsManager';
 import { useRoute } from 'vue-router';
 import { API_CONNECTION_FAILURE_EVENT } from '@/services/siatubeApi';
+import { GUARD_PROGRESS_EVENT } from '@/guard/challenge';
 import {
   checkForUpdate,
   fetchLatestBuildHtml,
@@ -94,6 +99,7 @@ export default {
     const latestVersion = ref("");
     const temporaryUpdateLoading = ref(false);
     const temporaryUpdateError = ref(false);
+    const guardProgressMessage = ref("");
 
     // Always initialize settingsModalOpen to false on page load
     console.log('[App.vue] Initialized settingsModalOpen to false on page load');
@@ -120,6 +126,16 @@ export default {
       connectionFailurePrompt.value = true;
     };
 
+    const handleGuardProgress = (event) => {
+      if (event?.detail?.state === 'working') {
+        guardProgressMessage.value = '接続を確認しています…';
+      } else if (event?.detail?.state === 'rate-limited') {
+        guardProgressMessage.value = `アクセスが集中しています。${event.detail.retryAfter}秒後に再試行します…`;
+      } else {
+        guardProgressMessage.value = '';
+      }
+    };
+
     const openProxySettings = () => {
       connectionFailurePrompt.value = false;
       openSettingsModal();
@@ -140,6 +156,7 @@ export default {
     };
 
     window.addEventListener(API_CONNECTION_FAILURE_EVENT, handleApiConnectionFailure);
+    window.addEventListener(GUARD_PROGRESS_EVENT, handleGuardProgress);
     checkForUpdate().then(async (result) => {
       currentVersion.value = result.currentVersion;
       latestVersion.value = result.latestVersion;
@@ -176,6 +193,7 @@ export default {
     onBeforeUnmount(() => {
       window.removeEventListener('storage', handleStorage);
       window.removeEventListener(API_CONNECTION_FAILURE_EVENT, handleApiConnectionFailure);
+      window.removeEventListener(GUARD_PROGRESS_EVENT, handleGuardProgress);
     });
 
     // Update sidebarOpen when viewport resizes across thresholds
@@ -228,6 +246,7 @@ export default {
       latestVersion,
       temporaryUpdateLoading,
       temporaryUpdateError,
+      guardProgressMessage,
       useLatestVersionTemporarily,
     };
   },
@@ -269,6 +288,38 @@ export default {
 </script>
 
 <style>
+.guard-progress {
+  position: fixed;
+  z-index: 1400;
+  top: 76px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 10px 14px;
+  border: 1px solid var(--border-color, #d1d5db);
+  border-radius: 8px;
+  color: var(--text-primary, #111827);
+  background: var(--background-color, #fff);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
+  font-size: 0.92rem;
+}
+
+.guard-progress-spinner {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: guard-progress-spin 0.8s linear infinite;
+}
+
+@keyframes guard-progress-spin {
+  to { transform: rotate(360deg); }
+}
+
 .version-warning {
   display: flex;
   align-items: center;

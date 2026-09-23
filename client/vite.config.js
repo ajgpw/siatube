@@ -42,6 +42,10 @@ export default defineConfig({
     },
   },
   base: "./", 
+  build: {
+    // The same bundle is embedded into the downloadable standalone HTML.
+    rollupOptions: { output: { inlineDynamicImports: true } },
+  },
   server: {
     allowedHosts: ["tpj4gl-5173.csb.app"],
   },
