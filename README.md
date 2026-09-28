@@ -1,4 +1,50 @@
+# しあTube
 
+Vue 3 / Vite で構築したクライアントアプリです。開発・テスト・ビルドはすべてリポジトリのルートで実行します。
+
+## 開発
+
+Node.js 20 以上と npm 11 以上を使用してください。
+
+```sh
+npm ci
+npm run dev
+```
+
+```sh
+npm test          # 回帰テスト
+npm run build    # Web 配信用ファイルと単一 HTML を生成
+npm run preview  # ビルド結果をローカルで確認
+npm start        # ビルド結果を 0.0.0.0:8010 で確認
+```
+
+`preview` / `start` の前には `npm run build` を実行してください。Web 配信用ファイルは `dist/`、JavaScript・CSS・アイコンを埋め込んだ単一 HTML は `dist/siatube-full.html.txt` に生成されます。単一 HTML は拡張子を `.html` に変更して利用できます。生成物と `node_modules/` は Git の管理対象外です。
+
+本番の静的ホスティングでは `dist/` を公開し、`/watch` などへの直接アクセスを `index.html` にフォールバックさせてください。
+
+## ファイル構成
+
+```text
+src/
+  assets/         # 検索アイコン・favicon の元データ
+  components/     # layout / player / video / channel / playlist / settings
+  composables/    # Vue の状態管理とイベントのライフサイクル
+  config/         # API 接続先などの共通設定
+  router/         # ページのルーティング
+  services/
+    api/          # API 呼び出し・レスポンス変換・互換インターフェース
+    guard/        # 通信の認証・セッション・Worker
+    media/        # 画像圧縮
+    network/      # プロキシ・通信方式
+    storage/      # 設定・履歴・プレイリスト・チャンネル登録の保存
+  styles/         # 共通 CSS と大きな画面のスタイル
+  utils/          # 共通処理。player/ は再生・字幕・自動再生の処理
+  vendor/         # ライセンス表記を含む同梱ライブラリ
+  views/          # ルートに対応する画面
+scripts/          # Vite 用プラグイン・単一 HTML 生成
+test/             # Node.js 標準テストランナーの回帰テスト
+server/           # 既存サーバーのソースをそのまま保存
+```
 
 <h2>連絡先・コミュニティ</h2>
 <ul style="list-style: none; padding: 0;">

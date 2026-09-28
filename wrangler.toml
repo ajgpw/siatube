@@ -1,8 +1,0 @@
-name = "siatube"
-main = "worker.js"
-compatibility_date = "2026-07-15"
-
-[assets]
-directory = "./client/dist"
-binding = "ASSETS"
-not_found_handling = "single-page-application"
