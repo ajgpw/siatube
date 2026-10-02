@@ -113,6 +113,6 @@
       <h2>JavaScriptが無効です</h2>
       <p>しあTubeを利用するにはJavaScriptを有効にしてください。</p>
     </noscript>
-
+ <script data-goatcounter="https://siatube.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
   </body>
 </html>
