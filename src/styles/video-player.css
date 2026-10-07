@@ -223,9 +223,14 @@ p {
 }
 
 .main-video-wrapper {
-  overflow: hidden;
+  overflow: visible;
   border-radius: 12px;
-  background: #000;
+}
+
+/* Paint titles and related videos above the player's decorative glow. */
+.main-content > :not(.main-video-wrapper),
+.related-section {
+  position: relative;
 }
 
 .watch-loading-state,

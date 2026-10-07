@@ -3,6 +3,10 @@ import assert from "node:assert/strict";
 
 import {
   loadAutoplay,
+  loadAmbientLight,
+  saveAmbientLight,
+  AMBIENT_LIGHT_SETTING_EVENT,
+  AMBIENT_LIGHT_STORAGE_KEY,
   loadDefaultPlayback,
   saveDefaultPlayback,
 } from "../src/services/storage/settingsManager.js";
@@ -21,6 +25,70 @@ test("明示的にオフへ設定した値は維持する", () => {
   };
 
   assert.equal(loadAutoplay(), false);
+});
+
+test("アンビエントライトは未設定の場合オンになる", (t) => {
+  const previousStorage = globalThis.localStorage;
+  t.after(() => { globalThis.localStorage = previousStorage; });
+  globalThis.localStorage = { getItem: () => null };
+
+  assert.equal(loadAmbientLight(), true);
+});
+
+test("アンビエントライトの保存済み設定を読み込み、オフを維持する", (t) => {
+  const previousStorage = globalThis.localStorage;
+  t.after(() => { globalThis.localStorage = previousStorage; });
+
+  for (const [stored, expected] of [
+    ['0', false], ['false', false], ['"0"', false],
+    ['1', true], ['true', true], ['"1"', true],
+  ]) {
+    globalThis.localStorage = {
+      getItem: (key) => {
+        assert.equal(key, AMBIENT_LIGHT_STORAGE_KEY);
+        return stored;
+      },
+    };
+    assert.equal(loadAmbientLight(), expected);
+  }
+});
+
+test("アンビエントライトの切り替えを保存し、同じタブに即時通知する", (t) => {
+  const previousStorage = globalThis.localStorage;
+  const previousWindow = globalThis.window;
+  const previousCustomEvent = globalThis.CustomEvent;
+  t.after(() => {
+    globalThis.localStorage = previousStorage;
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+    if (previousCustomEvent === undefined) delete globalThis.CustomEvent;
+    else globalThis.CustomEvent = previousCustomEvent;
+  });
+
+  const values = new Map();
+  const events = [];
+  globalThis.localStorage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+  };
+  globalThis.window = { dispatchEvent: (event) => events.push(event) };
+  globalThis.CustomEvent = class {
+    constructor(type, options) {
+      this.type = type;
+      this.detail = options.detail;
+    }
+  };
+
+  saveAmbientLight(false);
+  assert.equal(values.get(AMBIENT_LIGHT_STORAGE_KEY), '0');
+  assert.equal(loadAmbientLight(), false);
+  assert.equal(events[0].type, AMBIENT_LIGHT_SETTING_EVENT);
+  assert.deepEqual(events[0].detail, { enabled: false });
+
+  saveAmbientLight(true);
+  assert.equal(values.get(AMBIENT_LIGHT_STORAGE_KEY), '1');
+  assert.equal(loadAmbientLight(), true);
+  assert.deepEqual(events[1].detail, { enabled: true });
 });
 
 test("再生方式は旧形式・JSON 形式のどちらも同じ値で読み込む", (t) => {

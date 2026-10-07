@@ -1,13 +1,22 @@
 <template>
   <div class="video-wrapper">
+    <AmbientLight
+      v-if="currentStreamType === '1' || currentStreamType === '2'"
+      :key="`${videoId}:${currentStreamType}`"
+      :video="currentStreamType === '2' ? ambientVideo : null"
+      :thumbnail="videoThumbnail"
+    />
+    <div :class="{ 'player-surface': currentStreamType === '1' || currentStreamType === '2' }">
       <StreamType1 v-if="currentStreamType === '1'" :videoId="videoId" :videoTitle="videoTitle" @ended="onEnded" @play-autoplay-candidate="onPlayAutoplayCandidate" @autoplay-no-suitable-video="onAutoplayNoSuitableVideo" />
-      <StreamType2 v-else-if="currentStreamType === '2'" :videoId="videoId" :videoTitle="videoTitle" :videoArtist="videoArtist" :videoThumbnail="videoThumbnail" @ended="onEnded" @play-autoplay-candidate="onPlayAutoplayCandidate" @autoplay-no-suitable-video="onAutoplayNoSuitableVideo" />
+      <StreamType2 v-else-if="currentStreamType === '2'" :videoId="videoId" :videoTitle="videoTitle" :videoArtist="videoArtist" :videoThumbnail="videoThumbnail" @video-element="ambientVideo = $event" @ended="onEnded" @play-autoplay-candidate="onPlayAutoplayCandidate" @autoplay-no-suitable-video="onAutoplayNoSuitableVideo" />
       <StreamType3 v-else-if="currentStreamType === '3'" :videoId="videoId" @ended="onEnded" />
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from "vue";
+import { ref, shallowRef, watch, onMounted } from "vue";
+import AmbientLight from "./AmbientLight.vue";
 import StreamType1 from "./StreamType1.vue";
 import StreamType2 from "./StreamType2.vue";
 import StreamType3 from "./StreamType3.vue";
@@ -48,6 +57,7 @@ function getDefaultStreamType() {
 }
 
 const currentStreamType = ref(getDefaultStreamType());
+const ambientVideo = shallowRef(null);
 console.log("[StreamPlayer] setup", {
   propStreamType: props.streamType,
   initial: currentStreamType.value,
@@ -90,11 +100,23 @@ watch(
 );
 
 watch(currentStreamType, (val) => {
+  ambientVideo.value = null;
   console.log("[StreamPlayer] currentStreamType changed", { val });
 });
 </script>
 
 <style scoped>
+.video-wrapper {
+  position: relative;
+  isolation: isolate;
+}
+
+.player-surface {
+  overflow: hidden;
+  border-radius: 12px;
+  background: #000;
+}
+
 .video-container {
   position: relative;
   aspect-ratio: 16 / 9;

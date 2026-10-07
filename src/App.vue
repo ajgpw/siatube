@@ -1,5 +1,7 @@
 <template>
+  <template v-if="isDesktopViewport">
     <HeaderSearch 
+      :class="{ 'watch-header': route.path === '/watch' }"
       @search="onSearch" 
       @toggle-dark-mode="toggleDarkMode"
       @toggle-sidebar="handleToggleSidebar"
@@ -10,7 +12,7 @@
       <span class="guard-progress-spinner" aria-hidden="true"></span>
       {{ guardProgressMessage }}
     </div>
-    <main class="app-content" :class="{ 'sidebar-closed': !sidebarOpen }">
+    <main class="app-content" :class="{ 'sidebar-closed': !sidebarOpen, 'watch-page': route.path === '/watch' }">
       <div v-if="updateAvailable && temporaryUpdateError" class="version-warning" role="alert">
         <div>
           <strong>自動更新に失敗しました</strong>
@@ -60,8 +62,10 @@
         </div>
       </div>
       <router-view />
+      <WatchFooter v-if="route.path === '/watch'" />
     </main>
     <SettingsView />
+  </template>
 </template>
 
 <script setup>
@@ -69,10 +73,12 @@ import { onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import HeaderSearch from "@/components/layout/HeaderSearch.vue";
 import Sidebar from "@/components/layout/Sidebar.vue";
+import WatchFooter from "@/components/layout/WatchFooter.vue";
 import SettingsView from "@/views/SettingsView.vue";
 import { useAppNotifications } from "@/composables/useAppNotifications.js";
 import { useSettingsModal } from "@/composables/useSettingsModal.js";
 import { useSidebar } from "@/composables/useSidebar.js";
+import { useDesktopViewport } from "@/composables/useDesktopViewport.js";
 import {
   loadDisplayMode,
   computeIsDarkFromMode,
@@ -80,6 +86,7 @@ import {
 
 const route = useRoute();
 const router = useRouter();
+const { isDesktopViewport } = useDesktopViewport();
 const { sidebarOpen, handleToggleSidebar } = useSidebar(route);
 const { openSettingsModal } = useSettingsModal();
 const {
@@ -238,6 +245,8 @@ html.dark-mode .temporary-update-error {
 #app {
   padding-top: 52px;
   box-sizing: border-box;
+  /* Clip at the viewport edge so the video glow reaches beneath navigation. */
+  overflow-x: clip;
 }
 
 .app-content {
@@ -361,16 +370,13 @@ html.dark-mode .proxy-connection-message strong {
   }
 }
 
-@media (max-width: 1330px) {
-  .app-content > .yt-watch-page {
-  }
-  .app-content > .yt-watch-page {
-  }
-  .app-content:has(> .yt-watch-page) {
-    margin-left: 0px;
-  }
+.app-content.watch-page {
+  margin-left: 250px;
 }
 
+.app-content.watch-page.sidebar-closed {
+  margin-left: 70px;
+}
 
 @media (max-width: 789px) {
   .app-content {

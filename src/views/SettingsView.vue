@@ -170,6 +170,22 @@
           <small>自動、または指定解像度がない場合は自動選択になります</small>
         </section>
 
+        <!-- アンビエントライト -->
+        <section class="settings-section">
+          <h3>アンビエントライト</h3>
+          <label>
+            <input
+              type="checkbox"
+              :checked="ambientLightEnabled"
+              @change="handleAmbientLightChange($event.target.checked)"
+            />
+            アンビエントライトを有効にする
+          </label>
+          <small class="ambient-light-help">
+            動画の色をプレーヤーの周囲に広げます。タイプ２は映像の色、通常（タイプ１）はサムネイルの色を使います。
+          </small>
+        </section>
+
         <!-- 自動再生設定 -->
         <section class="settings-section">
           <h3>自動再生</h3>
@@ -336,6 +352,10 @@ import {
   saveDefaultPlayback,
   loadAutoplay,
   saveAutoplay,
+  loadAmbientLight,
+  saveAmbientLight,
+  AMBIENT_LIGHT_SETTING_EVENT,
+  AMBIENT_LIGHT_STORAGE_KEY,
   loadShortVideoFilter,
   saveShortVideoFilter,
   loadDisplayMode,
@@ -374,6 +394,7 @@ const requestProxySuccessDescription =
 // Settings state
 const defaultPlaybackMode = ref("1");
 const autoplayEnabled = ref(true);
+const ambientLightEnabled = ref(true);
 const shortVideoFilterEnabled = ref(false);
 const shortVideoFilterMinutes = ref(4);
 const displayMode = ref("device");
@@ -414,6 +435,8 @@ onMounted(() => {
   if (typeof window !== "undefined") {
     window.addEventListener(REQUEST_PROXY_HEALTH_EVENT, handleRequestProxyHealthEvent);
     window.addEventListener(REQUEST_PROXY_CONFIG_EVENT, handleRequestProxyConfigEvent);
+    window.addEventListener(AMBIENT_LIGHT_SETTING_EVENT, handleAmbientLightSettingEvent);
+    window.addEventListener("storage", handleAmbientLightStorageEvent);
   }
   restoreRequestProxyCheck();
   // apply current display mode to document
@@ -427,6 +450,7 @@ onMounted(() => {
     [
       defaultPlaybackMode,
       autoplayEnabled,
+      ambientLightEnabled,
       shortVideoFilterEnabled,
       shortVideoFilterMinutes,
       displayMode,
@@ -472,6 +496,7 @@ const requestProxyUrlError = computed(() => {
 watch(modalIsOpen, (open) => {
   if (open) {
     autoplayEnabled.value = loadAutoplay();
+    ambientLightEnabled.value = loadAmbientLight();
     const savedProxyUrl = loadRequestProxy().url;
     requestProxyJsonpEnabled.value = loadRequestProxyJsonp();
     requestProxyUrl.value = savedProxyUrl;
@@ -491,6 +516,7 @@ const loadSettings = () => {
   requestProxyUrl.value = loadRequestProxy().url;
   requestProxyJsonpEnabled.value = loadRequestProxyJsonp();
   autoplayEnabled.value = loadAutoplay();
+  ambientLightEnabled.value = loadAmbientLight();
 
   // First try to load from localStorage
   try {
@@ -544,6 +570,7 @@ const saveBackup = () => {
   backupState.value = {
     defaultPlaybackMode: defaultPlaybackMode.value,
     autoplayEnabled: autoplayEnabled.value,
+    ambientLightEnabled: ambientLightEnabled.value,
     shortVideoFilterEnabled: shortVideoFilterEnabled.value,
     shortVideoFilterMinutes: shortVideoFilterMinutes.value,
     displayMode: displayMode.value,
@@ -570,6 +597,23 @@ const handlePlaybackModeChange = (newMode) => {
 const handleAutoplayChange = (enabled) => {
   autoplayEnabled.value = !!enabled;
   saveAutoplay(autoplayEnabled.value);
+};
+
+const handleAmbientLightChange = (enabled) => {
+  ambientLightEnabled.value = !!enabled;
+  saveAmbientLight(ambientLightEnabled.value);
+};
+
+const handleAmbientLightSettingEvent = (event) => {
+  ambientLightEnabled.value = typeof event?.detail?.enabled === "boolean"
+    ? event.detail.enabled
+    : loadAmbientLight();
+};
+
+const handleAmbientLightStorageEvent = (event) => {
+  if (event.key === AMBIENT_LIGHT_STORAGE_KEY || event.key === null) {
+    ambientLightEnabled.value = loadAmbientLight();
+  }
 };
 
 const handleFilterEnabledChange = (enabled) => {
@@ -754,6 +798,8 @@ onBeforeUnmount(() => {
   if (typeof window !== "undefined") {
     window.removeEventListener(REQUEST_PROXY_HEALTH_EVENT, handleRequestProxyHealthEvent);
     window.removeEventListener(REQUEST_PROXY_CONFIG_EVENT, handleRequestProxyConfigEvent);
+    window.removeEventListener(AMBIENT_LIGHT_SETTING_EVENT, handleAmbientLightSettingEvent);
+    window.removeEventListener("storage", handleAmbientLightStorageEvent);
   }
 });
 
@@ -763,6 +809,7 @@ const saveToLocalStorage = () => {
     const settingsData = {
       defaultPlaybackMode: defaultPlaybackMode.value,
       autoplayEnabled: autoplayEnabled.value,
+      ambientLightEnabled: ambientLightEnabled.value,
       shortVideoFilterEnabled: shortVideoFilterEnabled.value,
       shortVideoFilterMinutes: shortVideoFilterMinutes.value,
       disableTimeouts: disableTimeouts.value,
@@ -924,6 +971,12 @@ const clearLocalStorage = () => {
 }
 
 .autoplay-setting-group > small {
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.ambient-light-help {
+  display: block;
   color: var(--text-secondary);
   line-height: 1.45;
 }

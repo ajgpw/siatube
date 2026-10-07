@@ -1,5 +1,5 @@
 <template>
-  <aside class="sidebar" :class="{ 'compact-mode': !isOpen && !isHidden, 'hidden-mode': isHidden, 'is-open': isHidden && isOpen }">
+  <aside class="sidebar" :class="{ 'watch-sidebar': isWatchPage, 'compact-mode': !isOpen && !isHidden, 'hidden-mode': isHidden, 'is-open': isHidden && isOpen }">
     <nav class="sidebar-nav" aria-label="メインメニュー">
       <router-link to="/" class="sidebar-item" :class="{ active: isActive('/') }">
         <span class="sidebar-icon">
@@ -67,23 +67,21 @@ export default {
     const settingsModal = inject('settingsModal', {});
     const SIDEBAR_STATE_KEY = 'youtube_sidebar_state';
 
-    // ビューポート幅に基づいて非表示モードかどうかを判定
-    // 通常は 790px 未満で hidden。動画再生ページでは 1330px 未満で hidden にする
+    // PC表示のウォッチページではコンパクトなナビゲーションを残す。
     const isHidden = computed(() => {
-      const threshold = props.isWatchPage ? 1330 : 790;
+      const threshold = props.isWatchPage ? 1000 : 790;
       return viewportWidth.value < threshold;
     });
 
     // 初期状態を設定
     const initializeState = () => {
-      const width = window.innerWidth;
-      if (width >= 1315) {
-        isOpen.value = true;
-      } else if (width >= 790) {
-        isOpen.value = false; // compact
-      } else {
-        isOpen.value = false; // hidden on small screens (isHidden will handle display)
-      }
+      isOpen.value = props.open;
+    };
+
+    const handleResize = () => {
+      viewportWidth.value = window.innerWidth;
+      initializeState();
+      updateBodyClass();
     };
 
     // 非表示モードで開閉ボタンをトグル
@@ -169,11 +167,6 @@ export default {
       }
 
       // ウィンドウリサイズリスナー
-      const handleResize = () => {
-        viewportWidth.value = window.innerWidth;
-        initializeState();
-        updateBodyClass();
-      };
       window.addEventListener('resize', handleResize);
     });
 
@@ -188,6 +181,7 @@ export default {
     });
 
     onUnmounted(() => {
+      window.removeEventListener('resize', handleResize);
       // クリーンアップ: body のクラスを削除
       const body = document.body;
       body.classList.remove('sidebar-compact');
@@ -230,7 +224,7 @@ export default {
 }
 
 /* When settings modal is open, limit sidebar height to match settings panel */
-:global(body.settings-modal-open) .sidebar {
+body.settings-modal-open .sidebar {
   height: auto;
   max-height: calc(100vh - 52px);
 }
@@ -248,6 +242,29 @@ export default {
   width: 250px;
   z-index: 999;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.sidebar.watch-sidebar {
+  background: var(--bg-primary);
+  border-right: 0;
+  box-shadow: none;
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .sidebar.watch-sidebar {
+    /* Keep the same ambient field as the content instead of fading it to white. */
+    background: transparent;
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+  }
+
+  html.dark-mode .watch-sidebar .sidebar-label {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+  }
+
+  html.dark-mode .watch-sidebar .sidebar-icon {
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.65));
+  }
 }
 
 .sidebar-nav {
@@ -368,7 +385,7 @@ export default {
   .sidebar,
   .sidebar.hidden-mode,
   .sidebar.hidden-mode.is-open,
-  :global(body.settings-modal-open) .sidebar {
+  body.settings-modal-open .sidebar {
     display: block;
     top: auto;
     bottom: 0;

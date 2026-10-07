@@ -36,7 +36,6 @@
       class="home-button"
       @click="$router.push('/')"
       aria-label="トップページへ戻る"
-      style="background: var(--bg-primary)"
     >
       <span class="brand-play-icon" aria-hidden="true"></span>
       <span class="brand-name">siatube</span>
@@ -339,6 +338,29 @@ const toggleSidebar = () => {
     border-color 0.3s ease;
 }
 
+.header-wrapper.watch-header {
+  background: var(--bg-primary);
+  border-bottom: 0;
+  box-shadow: none;
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .header-wrapper.watch-header {
+    /* Let the ambient layer decay naturally, including beyond the viewport. */
+    background: transparent;
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+  }
+
+  html.dark-mode .watch-header .brand-name {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+  }
+
+  html.dark-mode .watch-header .toggle-sidebar-button svg {
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.65));
+  }
+}
+
 .home-button {
   border: none;
   background: var(--bg-primary);
@@ -361,6 +383,8 @@ const toggleSidebar = () => {
 .home-button:hover {
   background: var(--hover-bg);
 }
+
+.watch-header .home-button:not(:hover) { background: transparent; }
 
 .brand-play-icon {
   position: relative;

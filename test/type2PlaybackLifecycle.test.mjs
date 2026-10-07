@@ -98,8 +98,10 @@ async function mountPlayer(t, { apple = false } = {}) {
     Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
   }
   const emitted = [];
+  const mediaElements = [];
   const app = renderer.createApp({ ...StreamType2, render: () => null }, {
     videoId: "abcdefghijk", onLoadingTimeoutReload: () => emitted.push("reload"),
+    onVideoElement: (video) => mediaElements.push(video),
   });
   app.provide(ssrContextKey, {});
   app.mount({});
@@ -116,7 +118,7 @@ async function mountPlayer(t, { apple = false } = {}) {
     }
   });
   await flush();
-  return { state, video, audio, emitted, resolveStream, frames, unmount: () => app.unmount() };
+  return { state, video, audio, emitted, mediaElements, resolveStream, frames, unmount: () => app.unmount() };
 }
 
 function setSources(state, separated = false) {
@@ -131,6 +133,18 @@ function setSources(state, separated = false) {
   state.availableQualities = ["720p", "360p"];
   state.selectedQuality = "720p";
 }
+
+test("ambient light receives each active video and releases it when playback has no video", async (t) => {
+  const { state, video, mediaElements } = await mountPlayer(t);
+  assert.deepEqual(mediaElements, [video]);
+  const replacement = new Media();
+  state.videoRef = replacement;
+  await flush();
+  assert.deepEqual(mediaElements, [video, replacement]);
+  state.videoRef = null;
+  await flush();
+  assert.deepEqual(mediaElements, [video, replacement, null]);
+});
 
 test("the interaction blocker expires when Apple fallback replaces the same quality", async (t) => {
   const { state } = await mountPlayer(t, { apple: true });

@@ -1,19 +1,23 @@
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
-import { createRenderer, nextTick, reactive } from "vue";
+import { createRenderer, nextTick, reactive, ssrContextKey } from "vue";
 import { createServer } from "vite";
+import vue from "@vitejs/plugin-vue";
+import { routeLocationKey } from "vue-router";
 import { useSidebar } from "../src/composables/useSidebar.js";
 import { useSettingsModal } from "../src/composables/useSettingsModal.js";
 
-// Load the update service's Vite raw import without starting an HTTP server.
+// Load real component setup and the update service's raw import without an HTTP server.
 const server = await createServer({
   configFile: false,
   root: fileURLToPath(new URL("..", import.meta.url)),
+  plugins: [vue()],
   resolve: { alias: { "@": fileURLToPath(new URL("../src", import.meta.url)) } },
   server: { middlewareMode: true, hmr: false, ws: false, watch: null },
 });
 const { useAppNotifications } = await server.ssrLoadModule("/src/composables/useAppNotifications.js");
+const { default: Sidebar } = await server.ssrLoadModule("/src/components/layout/Sidebar.vue");
 after(() => server.close());
 
 const renderer = createRenderer({
@@ -28,6 +32,7 @@ function installBrowser(t, width = 1400) {
   ));
   const values = new Map();
   const classes = new Set();
+  const styles = new Map();
   const window = new EventTarget();
   window.innerWidth = width;
   globalThis.window = window;
@@ -38,10 +43,13 @@ function installBrowser(t, width = 1400) {
   };
   let documentWrites = 0;
   globalThis.document = {
-    body: { classList: {
-      toggle(name, enabled) { enabled ? classes.add(name) : classes.delete(name); },
-      remove: (name) => classes.delete(name),
-    } },
+    body: {
+      classList: {
+        toggle(name, enabled) { enabled ? classes.add(name) : classes.delete(name); },
+        remove: (name) => classes.delete(name),
+      },
+      style: { setProperty: (name, value) => styles.set(name, value) },
+    },
     open() { documentWrites += 1; },
     write() {},
     close() {},
@@ -54,7 +62,7 @@ function installBrowser(t, width = 1400) {
       else delete globalThis[name];
     }
   });
-  return { window, values, classes, getDocumentWrites: () => documentWrites };
+  return { window, values, classes, styles, getDocumentWrites: () => documentWrites };
 }
 
 function mount(useComposable) {
@@ -95,6 +103,97 @@ test("sidebar follows viewport changes and restores its state after a watch rout
   window.innerWidth = 1400;
   window.dispatchEvent(new Event("resize"));
   assert.equal(state.sidebarOpen.value, false, "resize listener is removed");
+});
+
+test("opening a watch URL directly starts compact and restores the prior desktop state", async (t) => {
+  installBrowser(t);
+  const route = reactive({ path: "/watch" });
+  const { state, unmount } = mount(() => useSidebar(route));
+  assert.equal(state.sidebarOpen.value, false, "direct watch navigation starts compact");
+  route.path = "/search";
+  await nextTick();
+  assert.equal(state.sidebarOpen.value, true, "leaving restores the desktop default");
+
+  state.handleToggleSidebar(false);
+  route.path = "/watch";
+  await nextTick();
+  route.path = "/";
+  await nextTick();
+  assert.equal(state.sidebarOpen.value, false, "a user's compact state survives a watch visit");
+  unmount();
+});
+
+test("resizing a watch page keeps the sidebar compact and its toggle remains usable", async (t) => {
+  const { window } = installBrowser(t);
+  const route = reactive({ path: "/" });
+  const { state, unmount } = mount(() => useSidebar(route));
+  state.handleToggleSidebar(false);
+  route.path = "/watch";
+  await nextTick();
+  for (const width of [1000, 1329, 1330, 1800]) {
+    window.innerWidth = width;
+    window.dispatchEvent(new Event("resize"));
+    assert.equal(state.sidebarOpen.value, false, `watch sidebar stays compact at ${width}px`);
+  }
+
+  state.handleToggleSidebar(true);
+  assert.equal(state.sidebarOpen.value, true, "the menu toggle can expand the sidebar");
+  state.handleToggleSidebar(false);
+  assert.equal(state.sidebarOpen.value, false, "the menu toggle can compact it again");
+  state.handleToggleSidebar(true);
+  window.dispatchEvent(new Event("resize"));
+  assert.equal(state.sidebarOpen.value, false, "a viewport change restores the compact watch layout");
+  route.path = "/search";
+  await nextTick();
+  assert.equal(state.sidebarOpen.value, false, "leaving restores the pre-watch user preference");
+  unmount();
+});
+
+test("watch Sidebar respects a compact prop at desktop boundaries and cleans up resizing", async (t) => {
+  const { window, values, classes, styles } = installBrowser(t, 1000);
+  t.mock.method(console, "log", () => {});
+  const app = renderer.createApp({ ...Sidebar, render: () => null }, {
+    open: false, isWatchPage: true,
+  });
+  app.provide(routeLocationKey, reactive({ path: "/watch" }));
+  app.provide(ssrContextKey, {});
+  app.mount({});
+  const state = app._instance.setupState;
+  await nextTick();
+  for (const width of [1000, 1329, 1330]) {
+    window.innerWidth = width;
+    window.dispatchEvent(new Event("resize"));
+    await nextTick();
+    assert.equal(state.isOpen, false, `open=false remains compact at ${width}px`);
+    assert.equal(state.isHidden, false, `navigation remains visible at ${width}px`);
+    assert.equal(classes.has("sidebar-compact"), true);
+    assert.equal(classes.has("sidebar-hidden"), false);
+    assert.equal(styles.get("--sidebar-offset"), "70px");
+    assert.equal(values.get("youtube_sidebar_state"), "compact");
+  }
+
+  window.innerWidth = 999;
+  window.dispatchEvent(new Event("resize"));
+  await nextTick();
+  assert.equal(state.isHidden, true, "watch navigation changes below the PC boundary");
+  window.innerWidth = 1330;
+  window.dispatchEvent(new Event("resize"));
+  await nextTick();
+  app._instance.props.open = true;
+  await nextTick();
+  assert.equal(state.isOpen, true, "the component follows the menu toggle prop");
+  assert.equal(styles.get("--sidebar-offset"), "250px");
+  app._instance.props.open = false;
+  await nextTick();
+  assert.equal(state.isOpen, false);
+
+  app.unmount();
+  assert.equal(classes.has("sidebar-compact"), false);
+  assert.equal(classes.has("sidebar-hidden"), false);
+  window.innerWidth = 1000;
+  window.dispatchEvent(new Event("resize"));
+  await nextTick();
+  assert.equal(state.viewportWidth, 1330, "the unmounted Sidebar releases its resize listener");
 });
 
 test("settings dialog syncs storage and releases its listener and body class", async (t) => {

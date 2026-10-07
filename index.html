@@ -51,6 +51,52 @@
         line-height: 1.8;
         transition: background-color 0.3s ease, color 0.3s ease;
       }
+
+      .desktop-only-notice {
+        display: none;
+        box-sizing: border-box;
+        min-height: 100vh;
+        min-height: 100svh;
+        padding: 32px 24px;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 24px;
+        background: var(--bg-primary, #fff);
+        color: var(--text-primary, #212121);
+        text-align: center;
+      }
+
+      .desktop-only-notice svg {
+        width: 64px;
+        height: 64px;
+        flex-shrink: 0;
+        opacity: 0.7;
+      }
+
+      .desktop-only-notice h1 {
+        max-width: 30rem;
+        margin: 0;
+        font-size: 1.25rem;
+        font-weight: 600;
+        line-height: 1.8;
+      }
+
+      html.dark-mode .desktop-only-notice {
+        background: var(--bg-primary, #1a1a1a);
+        color: var(--text-primary, #e0e0e0);
+      }
+
+      /* Match the JavaScript desktop query, including fractional viewport widths. */
+      @media not all and (min-width: 1000px) {
+        #app, noscript {
+          display: none !important;
+        }
+
+        .desktop-only-notice {
+          display: flex;
+        }
+      }
     </style>
     <script type="application/ld+json">
       {
@@ -71,6 +117,14 @@
   <body>
 
     <div id="app"></div>
+
+    <main class="desktop-only-notice" aria-labelledby="desktop-only-message">
+      <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+        <rect x="7" y="9" width="50" height="35" rx="4" />
+        <path d="M24 55h16M32 44v11M7 36h50" />
+      </svg>
+      <h1 id="desktop-only-message">このサイトはPC向けです。デスクトップ環境でアクセスしてください</h1>
+    </main>
 
     <noscript>
       <h2>JavaScriptが無効です</h2>

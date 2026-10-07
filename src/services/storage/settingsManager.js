@@ -2,9 +2,12 @@
  * ヘッダー検索設定の管理ロジック（リファクタリング版）
  */
 
+export const AMBIENT_LIGHT_STORAGE_KEY = 'yt_ambient_light_enabled_v1';
+
 const STORAGE_KEYS = {
   DEFAULT_PLAYBACK: 'defaultPlaybackMode',
   AUTOPLAY_ENABLED: 'yt_autoplay_enabled_v1',
+  AMBIENT_LIGHT_ENABLED: AMBIENT_LIGHT_STORAGE_KEY,
   SHORT_VIDEO_FILTER_ENABLED: 'shortVideoFilterEnabled',
   SHORT_VIDEO_FILTER_MINUTES: 'shortVideoFilterMinutes',
   DARK_MODE: 'darkMode',
@@ -16,11 +19,13 @@ const STORAGE_KEYS = {
 const DEFAULTS = {
   DEFAULT_PLAYBACK_MODE: '1',
   AUTOPLAY_ENABLED: true,
+  AMBIENT_LIGHT_ENABLED: true,
   SHORT_VIDEO_MINUTES: 4,
   PREFERRED_QUALITY: 'auto',
 };
 
 export const AUTOPLAY_SETTING_EVENT = 'yt-autoplay-setting-changed';
+export const AMBIENT_LIGHT_SETTING_EVENT = 'yt-ambient-light-setting-changed';
 
 function safeSetItem(key, value) {
   try {
@@ -131,6 +136,36 @@ export function loadAutoplay() {
     console.error('loadAutoplay error', e);
     return DEFAULTS.AUTOPLAY_ENABLED;
   }
+}
+
+/**
+ * アンビエントライト設定を保存し、同じタブのプレーヤーに通知する。
+ * @param {boolean} enabled
+ */
+export function saveAmbientLight(enabled) {
+  const value = !!enabled;
+  try {
+    localStorage.setItem(STORAGE_KEYS.AMBIENT_LIGHT_ENABLED, value ? '1' : '0');
+  } catch (e) {
+    console.error('saveAmbientLight error', e);
+  }
+  try {
+    window.dispatchEvent(new CustomEvent(AMBIENT_LIGHT_SETTING_EVENT, {
+      detail: { enabled: value },
+    }));
+  } catch {}
+}
+
+/**
+ * アンビエントライト設定を読み込む。未設定の場合はオン。
+ * @returns {boolean}
+ */
+export function loadAmbientLight() {
+  const stored = safeGetItem(STORAGE_KEYS.AMBIENT_LIGHT_ENABLED, null);
+  if (stored === null || stored === undefined) {
+    return DEFAULTS.AMBIENT_LIGHT_ENABLED;
+  }
+  return stored === true || stored === 1 || stored === '1';
 }
 
 /**
@@ -300,6 +335,8 @@ export default {
   loadDefaultPlayback,
   saveAutoplay,
   loadAutoplay,
+  saveAmbientLight,
+  loadAmbientLight,
   saveShortVideoFilter,
   loadShortVideoFilter,
   saveDisplayMode,

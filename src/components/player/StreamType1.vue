@@ -30,6 +30,10 @@
     </div>
     <PlayerSettings :visible="settingsVisible" @interaction="showSettingsBox">
       <label>
+        アンビエントライト:
+        <input type="checkbox" :checked="ambientLightEnabled" @change="setAmbientLightEnabled($event.target.checked)" />
+      </label>
+      <label>
         繰り返し:
         <input type="checkbox" v-model="repeatEnabled" />
       </label>
@@ -52,6 +56,7 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import PlayerSettings from "@/components/player/PlayerSettings.vue";
 import PlayerLoading from "@/components/player/PlayerLoading.vue";
+import { useAmbientLight } from "@/composables/useAmbientLight.js";
 import { youtubeEducationStream } from "@/services/api/siatubeApi.js";
 import {
   getAutoplayCandidateId,
@@ -84,6 +89,7 @@ const iframeLoaded = ref(false);
 const iframeRef = ref(null);
 const iframeRenderKey = ref(0);
 const autoplayEnabled = ref(loadAutoplay());
+const { enabled: ambientLightEnabled, setEnabled: setAmbientLightEnabled } = useAmbientLight();
 const repeatEnabled = ref(false);
 const settingsVisible = ref(true);
 const showUnmutePrompt = ref(false);

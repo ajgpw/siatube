@@ -62,6 +62,10 @@
 
       <PlayerSettings :visible="settingsVisible" @interaction="showSettingsBox">
         <label>
+          アンビエントライト:
+          <input type="checkbox" :checked="ambientLightEnabled" @change="setAmbientLightEnabled($event.target.checked)" />
+        </label>
+        <label>
           繰り返し:
           <input type="checkbox" v-model="repeatEnabled" />
         </label>
@@ -208,6 +212,10 @@
 
       <PlayerSettings :visible="settingsVisible" @interaction="showSettingsBox">
         <label>
+          アンビエントライト:
+          <input type="checkbox" :checked="ambientLightEnabled" @change="setAmbientLightEnabled($event.target.checked)" />
+        </label>
+        <label>
           繰り返し:
           <input type="checkbox" v-model="repeatEnabled" />
         </label>
@@ -307,6 +315,7 @@ import {
 import { setupSyncPlayback } from "@/utils/player/syncPlayback.js";
 import { createPlaybackController } from "@/utils/player/playbackController.js";
 import { useMediaSessionMetadata } from "@/composables/useMediaSessionMetadata.js";
+import { useAmbientLight } from "@/composables/useAmbientLight.js";
 import { useStreamServerStatus } from "@/composables/useStreamServerStatus.js";
 import { parseStream2Response } from "@/utils/player/type2StreamParser.js";
 import {
@@ -357,6 +366,7 @@ const { updateMetadata } = useMediaSessionMetadata(() => ({
 }));
 
 const emit = defineEmits([
+  "video-element",
   "ended",
   "play-autoplay-candidate",
   "autoplay-no-suitable-video",
@@ -402,6 +412,7 @@ const selectedPlaybackRate = ref(1.0);
 const playbackRates = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 3, 4];
 const diffText = ref("0");
 const videoRef = ref(null);
+const { enabled: ambientLightEnabled, setEnabled: setAmbientLightEnabled } = useAmbientLight();
 const audioRef = ref(null);
 let fullscreenController = null;
 const fullscreenSupported = ref(false);
@@ -1606,6 +1617,7 @@ watch(selectedSubtitle, () => subtitleSelection?.sync(), { flush: "sync" });
 
 // videoRef の変化を監視して ended リスナの attach/detach を行う
 watch(videoRef, (newEl, oldEl) => {
+  emit("video-element", newEl);
   fullscreenController?.dispose();
   fullscreenController = newEl ? createVideoFullscreen(newEl) : null;
   fullscreenSupported.value = fullscreenController?.supported ?? false;

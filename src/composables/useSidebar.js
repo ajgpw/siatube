@@ -11,7 +11,7 @@ export function useSidebar(route) {
   }
 
   function updateSidebarByWidth() {
-    sidebarOpen.value = window.innerWidth >= EXPANDED_SIDEBAR_WIDTH;
+    sidebarOpen.value = route.path !== "/watch" && window.innerWidth >= EXPANDED_SIDEBAR_WIDTH;
   }
 
   window.addEventListener("resize", updateSidebarByWidth);
@@ -30,7 +30,7 @@ export function useSidebar(route) {
       sidebarOpen.value = previousSidebarOpen;
       previousSidebarOpen = null;
     }
-  });
+  }, { immediate: true });
 
   return { sidebarOpen, handleToggleSidebar };
 }
