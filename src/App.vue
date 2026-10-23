@@ -1,71 +1,69 @@
 <template>
-  <template v-if="isDesktopViewport">
-    <HeaderSearch 
-      :class="{ 'watch-header': route.path === '/watch' }"
-      @search="onSearch" 
-      @toggle-dark-mode="toggleDarkMode"
-      @toggle-sidebar="handleToggleSidebar"
-      :sidebar-open="sidebarOpen"
-    />
-    <Sidebar :open="sidebarOpen" :is-watch-page="route.path === '/watch'" />
-    <div v-if="guardProgressMessage" class="guard-progress" role="status" aria-live="polite">
-      <span class="guard-progress-spinner" aria-hidden="true"></span>
-      {{ guardProgressMessage }}
+  <HeaderSearch
+    :class="{ 'watch-header': route.path === '/watch' }"
+    @search="onSearch"
+    @toggle-dark-mode="toggleDarkMode"
+    @toggle-sidebar="handleToggleSidebar"
+    :sidebar-open="sidebarOpen"
+  />
+  <Sidebar :open="sidebarOpen" :is-watch-page="route.path === '/watch'" />
+  <div v-if="guardProgressMessage" class="guard-progress" role="status" aria-live="polite">
+    <span class="guard-progress-spinner" aria-hidden="true"></span>
+    {{ guardProgressMessage }}
+  </div>
+  <main class="app-content" :class="{ 'sidebar-closed': !sidebarOpen, 'watch-page': route.path === '/watch' }">
+    <div v-if="updateAvailable && temporaryUpdateError" class="version-warning" role="alert">
+      <div>
+        <strong>自動更新に失敗しました</strong>
+        <p>現在: {{ currentVersion }} ／ 最新: {{ latestVersion }}</p>
+        <p v-if="temporaryUpdateError" class="temporary-update-error">
+          最新バージョンを読み込めませんでした。通信またはプロキシ設定を確認してください。
+        </p>
+      </div>
+      <div class="version-warning-actions">
+        <button
+          type="button"
+          class="use-latest-version"
+          :disabled="temporaryUpdateLoading"
+          @click="useLatestVersionTemporarily"
+        >
+          {{ temporaryUpdateLoading ? "読み込み中…" : "最新バージョンへの切り替えを再試行" }}
+        </button>
+        <button
+          type="button"
+          class="dismiss-version-warning"
+          aria-label="更新のお知らせを閉じる"
+          @click="updateAvailable = false"
+        >✕</button>
+      </div>
     </div>
-    <main class="app-content" :class="{ 'sidebar-closed': !sidebarOpen, 'watch-page': route.path === '/watch' }">
-      <div v-if="updateAvailable && temporaryUpdateError" class="version-warning" role="alert">
-        <div>
-          <strong>自動更新に失敗しました</strong>
-          <p>現在: {{ currentVersion }} ／ 最新: {{ latestVersion }}</p>
-          <p v-if="temporaryUpdateError" class="temporary-update-error">
-            最新バージョンを読み込めませんでした。通信またはプロキシ設定を確認してください。
-          </p>
-        </div>
-        <div class="version-warning-actions">
-          <button
-            type="button"
-            class="use-latest-version"
-            :disabled="temporaryUpdateLoading"
-            @click="useLatestVersionTemporarily"
-          >
-            {{ temporaryUpdateLoading ? "読み込み中…" : "最新バージョンへの切り替えを再試行" }}
-          </button>
-          <button
-            type="button"
-            class="dismiss-version-warning"
-            aria-label="更新のお知らせを閉じる"
-            @click="updateAvailable = false"
-          >✕</button>
-        </div>
+    <div
+      v-if="connectionFailurePrompt"
+      class="proxy-connection-prompt"
+      role="alert"
+    >
+      <div class="proxy-connection-message">
+        <strong>API通信がブロックされている可能性が高いです</strong>
+        <p>接続確認用のJSONを取得できませんでした。ネットワークでフィルタリングされている場合は、プロキシを設定してください。</p>
       </div>
-      <div
-        v-if="connectionFailurePrompt"
-        class="proxy-connection-prompt"
-        role="alert"
-      >
-        <div class="proxy-connection-message">
-          <strong>API通信がブロックされている可能性が高いです</strong>
-          <p>接続確認用のJSONを取得できませんでした。ネットワークでフィルタリングされている場合は、プロキシを設定してください。</p>
-        </div>
-        <div class="proxy-connection-actions">
-          <button type="button" class="open-proxy-settings" @click="openProxySettings">
-            プロキシ設定を開く
-          </button>
-          <button
-            type="button"
-            class="dismiss-proxy-prompt"
-            aria-label="プロキシ設定の案内を閉じる"
-            @click="connectionFailurePrompt = false"
-          >
-            ✕
-          </button>
-        </div>
+      <div class="proxy-connection-actions">
+        <button type="button" class="open-proxy-settings" @click="openProxySettings">
+          プロキシ設定を開く
+        </button>
+        <button
+          type="button"
+          class="dismiss-proxy-prompt"
+          aria-label="プロキシ設定の案内を閉じる"
+          @click="connectionFailurePrompt = false"
+        >
+          ✕
+        </button>
       </div>
-      <router-view />
-      <WatchFooter v-if="route.path === '/watch'" />
-    </main>
-    <SettingsView />
-  </template>
+    </div>
+    <router-view />
+    <WatchFooter v-if="route.path === '/watch'" />
+  </main>
+  <SettingsView />
 </template>
 
 <script setup>
@@ -78,7 +76,6 @@ import SettingsView from "@/views/SettingsView.vue";
 import { useAppNotifications } from "@/composables/useAppNotifications.js";
 import { useSettingsModal } from "@/composables/useSettingsModal.js";
 import { useSidebar } from "@/composables/useSidebar.js";
-import { useDesktopViewport } from "@/composables/useDesktopViewport.js";
 import {
   loadDisplayMode,
   computeIsDarkFromMode,
@@ -86,7 +83,6 @@ import {
 
 const route = useRoute();
 const router = useRouter();
-const { isDesktopViewport } = useDesktopViewport();
 const { sidebarOpen, handleToggleSidebar } = useSidebar(route);
 const { openSettingsModal } = useSettingsModal();
 const {
@@ -376,6 +372,13 @@ html.dark-mode .proxy-connection-message strong {
 
 .app-content.watch-page.sidebar-closed {
   margin-left: 70px;
+}
+
+@media not all and (min-width: 1000px) {
+  .app-content.watch-page,
+  .app-content.watch-page.sidebar-closed {
+    margin-left: 0;
+  }
 }
 
 @media (max-width: 789px) {

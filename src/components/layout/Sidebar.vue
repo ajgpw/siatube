@@ -395,6 +395,7 @@ body.settings-modal-open .sidebar {
     padding-bottom: env(safe-area-inset-bottom, 0px);
     border-right: 0;
     border-top: 1px solid var(--border-color);
+    background: var(--bg-primary);
     box-shadow: 0 -2px 12px rgb(0 0 0 / 6%);
     z-index: 1000;
   }
