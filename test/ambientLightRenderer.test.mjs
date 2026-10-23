@@ -201,6 +201,58 @@ test('hidden and offscreen videos stop rendering and redraw when visible, includ
   assert.equal(f.observers[0].disconnected, true);
 });
 
+test('a detached capture video follows the visible player instead of its own intersection', () => {
+  const f = fixture();
+  const playerHost = {};
+  const renderer = createAmbientLightRenderer(f.video, f.canvas, {
+    ...f.options, visibilityTarget: playerHost,
+  });
+  assert.equal(f.observers[0].target, playerHost);
+  assert.deepEqual(f.calls[0], [f.video, 0, 0, 96, 54]);
+  assert.equal(f.pending(), 1);
+  f.observers[0].callback([{ target: f.video, isIntersecting: false, intersectionRatio: 0 }]);
+  assert.equal(f.pending(), 1, 'the detached media element does not control visibility');
+
+  f.observers[0].trigger(false);
+  assert.equal(f.pending(), 0);
+  assert.equal(f.resets(), 1);
+  f.event('playing');
+  f.tick(100);
+  assert.equal(f.frames(), 1, 'offscreen player hosts cannot draw capture frames');
+  f.observers[0].trigger(true);
+  assert.equal(f.frames(), 2);
+  assert.equal(f.calls.at(-1)[0], f.video);
+  assert.equal(f.pending(), 1);
+  renderer.dispose();
+  assert.equal(f.observers[0].disconnected, true);
+});
+
+test('fullscreen on a capture host, iframe, or containing player suspends its backdrop', () => {
+  const f = fixture();
+  const iframe = {};
+  const playerHost = { contains: element => element === iframe };
+  const wrapper = { contains: element => element === playerHost };
+  const renderer = createAmbientLightRenderer(f.video, f.canvas, {
+    ...f.options, visibilityTarget: playerHost,
+  });
+  for (const target of [playerHost, iframe, wrapper]) {
+    const framesBefore = f.frames();
+    f.doc.fullscreenElement = target;
+    f.event('fullscreenchange', f.doc);
+    assert.equal(f.pending(), 0);
+    f.tick(100);
+    assert.equal(f.frames(), framesBefore);
+    f.doc.fullscreenElement = null;
+    f.event('fullscreenchange', f.doc);
+    assert.equal(f.pending(), 1);
+    assert.equal(f.frames(), framesBefore + 1);
+  }
+  f.doc.fullscreenElement = { contains: () => false };
+  f.event('fullscreenchange', f.doc);
+  assert.equal(f.pending(), 1, 'unrelated fullscreen elements do not suppress the player');
+  renderer.dispose();
+});
+
 test('picture in picture and native video fullscreen suspend the backdrop', () => {
   const f = fixture();
   const renderer = createAmbientLightRenderer(f.video, f.canvas, f.options);

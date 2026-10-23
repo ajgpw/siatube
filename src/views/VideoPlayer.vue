@@ -855,7 +855,7 @@ export default {
             const filterConfig = window.__autoplayDurationFilter || {
               enabled: false,
             };
-            if (filterConfig.enabled) {
+            if (filterConfig.enabled && !this.$route.query.list) {
               return;
             }
 
@@ -941,6 +941,7 @@ export default {
     },
 
     onAutoplayNoSuitableVideo() {
+      if (this.$route.query.list) return;
       try {
         const filterConfig = window.__autoplayDurationFilter || {
           enabled: false,

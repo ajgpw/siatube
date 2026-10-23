@@ -48,12 +48,13 @@ test("download mode has no black player surface around its rounded button", asyn
   assert.doesNotMatch(html, /data-player-child="AmbientLight"/);
 });
 
-test("both video modes retain their rounded player surface and ambient light", async (t) => {
+test("both video modes retain their rounded player surface while Education defaults to no light", async (t) => {
   for (const streamType of ["1", "2"]) {
     const html = await renderPlayer(t, streamType);
     assert.match(html, /\bclass="[^"]*\bplayer-surface\b/);
     assert.match(html, new RegExp(`data-player-child="StreamType${streamType}"`));
-    assert.match(html, /data-player-child="AmbientLight"/);
+    if (streamType === "1") assert.doesNotMatch(html, /data-player-child="AmbientLight"/);
+    else assert.match(html, /data-player-child="AmbientLight"/);
     assert.doesNotMatch(html, /data-player-child="StreamType3"/);
   }
 });

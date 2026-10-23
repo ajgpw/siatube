@@ -6,6 +6,7 @@ const CANVAS_HEIGHT = 54;
 export function createAmbientLightRenderer(video, canvas, {
   onFrame = () => {},
   onReset = () => {},
+  visibilityTarget = video,
   document: doc = globalThis.document,
   window: win = globalThis.window,
 } = {}) {
@@ -31,6 +32,7 @@ export function createAmbientLightRenderer(video, canvas, {
   let generation = 0;
   let observer;
   const listeners = [];
+  const observedTarget = visibilityTarget || video;
   const useVideoFrames = typeof video.requestVideoFrameCallback === 'function';
   const now = () => win?.performance?.now?.() ?? globalThis.performance?.now?.() ?? 0;
 
@@ -43,13 +45,20 @@ export function createAmbientLightRenderer(video, canvas, {
   }
 
   function suppressed() {
+    const fullscreenElement = doc?.fullscreenElement || doc?.webkitFullscreenElement;
+    const captureTargetFullscreen = observedTarget !== video && fullscreenElement && (
+      fullscreenElement === observedTarget ||
+      fullscreenElement.contains?.(observedTarget) ||
+      observedTarget.contains?.(fullscreenElement)
+    );
     return Boolean(
       doc?.hidden || doc?.visibilityState === 'hidden' || !intersecting ||
       pictureInPicture || doc?.pictureInPictureElement === video ||
       video.webkitPresentationMode === 'picture-in-picture' ||
       video.webkitPresentationMode === 'fullscreen' ||
       nativeFullscreen || video.webkitDisplayingFullscreen ||
-      doc?.fullscreenElement === video || doc?.webkitFullscreenElement === video
+      doc?.fullscreenElement === video || doc?.webkitFullscreenElement === video ||
+      captureTargetFullscreen
     );
   }
 
@@ -208,12 +217,12 @@ export function createAmbientLightRenderer(video, canvas, {
       observer = new Observer(entries => {
         if (disposed) return;
         for (const entry of entries) {
-          if (entry.target !== video) continue;
+          if (entry.target !== observedTarget) continue;
           intersecting = entry.isIntersecting && entry.intersectionRatio !== 0;
           refresh(true);
         }
       });
-      observer.observe(video);
+      observer.observe(observedTarget);
     } catch {
       observer?.disconnect();
       observer = undefined;

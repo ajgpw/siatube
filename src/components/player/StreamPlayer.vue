@@ -1,14 +1,15 @@
 <template>
   <div class="video-wrapper">
     <AmbientLight
-      v-if="currentStreamType === '1' || currentStreamType === '2'"
+      v-if="currentStreamType === '2' || (currentStreamType === '1' && ambientVideo)"
       :key="`${videoId}:${currentStreamType}`"
-      :video="currentStreamType === '2' ? ambientVideo : null"
-      :thumbnail="videoThumbnail"
+      :video="ambientVideo"
+      :visibility-target="ambientVisibilityTarget"
+      :thumbnail="currentStreamType === '2' ? videoThumbnail : ''"
     />
     <div :class="{ 'player-surface': currentStreamType === '1' || currentStreamType === '2' }">
-      <StreamType1 v-if="currentStreamType === '1'" :videoId="videoId" :videoTitle="videoTitle" @ended="onEnded" @play-autoplay-candidate="onPlayAutoplayCandidate" @autoplay-no-suitable-video="onAutoplayNoSuitableVideo" />
-      <StreamType2 v-else-if="currentStreamType === '2'" :videoId="videoId" :videoTitle="videoTitle" :videoArtist="videoArtist" :videoThumbnail="videoThumbnail" @video-element="ambientVideo = $event" @ended="onEnded" @play-autoplay-candidate="onPlayAutoplayCandidate" @autoplay-no-suitable-video="onAutoplayNoSuitableVideo" />
+      <StreamType1 v-if="currentStreamType === '1'" :videoId="videoId" :videoTitle="videoTitle" @ambient-source="onEducationAmbientSource" @ended="onEnded" @play-autoplay-candidate="onPlayAutoplayCandidate" @autoplay-no-suitable-video="onAutoplayNoSuitableVideo" />
+      <StreamType2 v-else-if="currentStreamType === '2'" :videoId="videoId" :videoTitle="videoTitle" :videoArtist="videoArtist" :videoThumbnail="videoThumbnail" @video-element="onVideoElement" @ended="onEnded" @play-autoplay-candidate="onPlayAutoplayCandidate" @autoplay-no-suitable-video="onAutoplayNoSuitableVideo" />
       <StreamType3 v-else-if="currentStreamType === '3'" :videoId="videoId" @ended="onEnded" />
     </div>
   </div>
@@ -58,6 +59,19 @@ function getDefaultStreamType() {
 
 const currentStreamType = ref(getDefaultStreamType());
 const ambientVideo = shallowRef(null);
+const ambientVisibilityTarget = shallowRef(null);
+
+function onEducationAmbientSource(source) {
+  if (currentStreamType.value !== "1") return;
+  ambientVideo.value = source?.video || null;
+  ambientVisibilityTarget.value = source?.visibilityTarget || null;
+}
+
+function onVideoElement(video) {
+  if (currentStreamType.value !== "2") return;
+  ambientVideo.value = video;
+  ambientVisibilityTarget.value = null;
+}
 console.log("[StreamPlayer] setup", {
   propStreamType: props.streamType,
   initial: currentStreamType.value,
@@ -101,8 +115,9 @@ watch(
 
 watch(currentStreamType, (val) => {
   ambientVideo.value = null;
+  ambientVisibilityTarget.value = null;
   console.log("[StreamPlayer] currentStreamType changed", { val });
-});
+}, { flush: "sync" });
 </script>
 
 <style scoped>

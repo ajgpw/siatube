@@ -117,6 +117,13 @@ const query = ref("");
 const suggestions = ref([]);
 const selectedIndex = ref(-1);
 let fetchController = null;
+let suggestionTimer = null;
+const cancelSuggestions = () => {
+  clearTimeout(suggestionTimer);
+  suggestionTimer = null;
+  if (fetchController) fetchController.abort();
+  fetchController = null;
+};
 const searchFormRef = ref(null);
 
 const displayMode = ref("device");
@@ -144,6 +151,7 @@ const props = defineProps({ sidebarOpen: { type: Boolean, default: true } });
  */
 const onClickOutside = (event) => {
   if (searchFormRef.value && !searchFormRef.value.contains(event.target)) {
+    cancelSuggestions();
     suggestions.value = [];
     selectedIndex.value = -1;
   }
@@ -174,6 +182,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  cancelSuggestions();
   document.removeEventListener("click", onClickOutside);
   // detach system color scheme listener if attached
   try {
@@ -190,16 +199,25 @@ onBeforeUnmount(() => {
 });
 
 /**
- * 検索候補を取得
+ * 最後の入力から2秒後に検索候補を取得
  */
-const onInput = async () => {
-  if (fetchController) fetchController.abort();
-  fetchController = new AbortController();
-  suggestions.value = await fetchSearchSuggestions(
-    query.value.trim(),
-    fetchController.signal
-  );
+const onInput = () => {
+  cancelSuggestions();
+  suggestions.value = [];
   selectedIndex.value = -1;
+  const keyword = query.value.trim();
+  if (!keyword) return;
+
+  suggestionTimer = setTimeout(async () => {
+    suggestionTimer = null;
+    const controller = new AbortController();
+    fetchController = controller;
+    const results = await fetchSearchSuggestions(keyword, controller.signal);
+    if (controller.signal.aborted || fetchController !== controller) return;
+    suggestions.value = results;
+    selectedIndex.value = -1;
+    fetchController = null;
+  }, 2000);
 };
 
 /**
@@ -235,6 +253,7 @@ const onSuggestionClick = (index) => {
  * 検索を実行
  */
 const submitSearch = () => {
+  cancelSuggestions();
   const trimmed = query.value.trim();
   if (!trimmed) return;
   suggestions.value = [];
@@ -246,6 +265,7 @@ const submitSearch = () => {
  * クリアボタン
  */
 const clearQuery = () => {
+  cancelSuggestions();
   query.value = "";
   suggestions.value = [];
   selectedIndex.value = -1;

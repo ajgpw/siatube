@@ -8,7 +8,7 @@
     class="video-container"
     @mouseenter="showSettingsBox"
   >
-    <div class="player-host">
+    <div ref="playerHostRef" class="player-host">
       <iframe
         :key="iframeRenderKey"
         ref="iframeRef"
@@ -28,11 +28,24 @@
     >
       ミュートを解除する
     </div>
-    <PlayerSettings :visible="settingsVisible" @interaction="showSettingsBox">
+    <PlayerSettings :visible="settingsVisible || capturePending" @interaction="showSettingsBox">
       <label>
         アンビエントライト:
-        <input type="checkbox" :checked="ambientLightEnabled" @change="setAmbientLightEnabled($event.target.checked)" />
+        <input
+          type="checkbox"
+          :checked="captureEnabled"
+          :disabled="!captureSupported || captureReducedMotion || !iframeLoaded"
+          aria-describedby="education-ambient-help"
+          @change="handleAmbientLightChange"
+        />
       </label>
+      <small id="education-ambient-help" class="ambient-capture-help">
+        <template v-if="!captureSupported">このブラウザではタブ共有による映像連動を利用できません。</template>
+        <template v-else-if="captureReducedMotion">端末の「視差効果を減らす」設定が有効です。</template>
+        <template v-else>オンにするたびに、共有画面で「このタブ」を選んで許可してください。</template>
+      </small>
+      <small v-if="capturePending" class="ambient-capture-help" role="status">共有の許可を待っています…</small>
+      <small v-if="captureError" class="ambient-capture-help" role="alert">{{ captureError }}</small>
       <label>
         繰り返し:
         <input type="checkbox" v-model="repeatEnabled" />
@@ -57,6 +70,10 @@ import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import PlayerSettings from "@/components/player/PlayerSettings.vue";
 import PlayerLoading from "@/components/player/PlayerLoading.vue";
 import { useAmbientLight } from "@/composables/useAmbientLight.js";
+import {
+  startEducationAmbientCapture,
+  supportsEducationAmbientCapture,
+} from "@/utils/player/educationAmbientCapture.js";
 import { youtubeEducationStream } from "@/services/api/siatubeApi.js";
 import {
   getAutoplayCandidateId,
@@ -64,10 +81,14 @@ import {
 } from "@/utils/player/autoplayManager.js";
 import {
   AUTOPLAY_SETTING_EVENT,
+  AMBIENT_LIGHT_SETTING_EVENT,
+  AMBIENT_LIGHT_STORAGE_KEY,
+  loadAmbientLight,
   loadAutoplay,
   saveAutoplay,
 } from "@/services/storage/settingsManager.js";
 import {
+  configureYoutubeEducationEmbedUrl,
   ensureYoutubeEducationPlayerApi,
   loadYoutubeEducationPlayerData,
 } from "@/utils/player/youtubeEducationPlayer.js";
@@ -80,6 +101,7 @@ const emit = defineEmits([
   "ended",
   "play-autoplay-candidate",
   "autoplay-no-suitable-video",
+  "ambient-source",
 ]);
 
 const streamUrl = ref("");
@@ -87,9 +109,16 @@ const error = ref("");
 const loading = ref(false);
 const iframeLoaded = ref(false);
 const iframeRef = ref(null);
+const playerHostRef = ref(null);
 const iframeRenderKey = ref(0);
 const autoplayEnabled = ref(loadAutoplay());
 const { enabled: ambientLightEnabled, setEnabled: setAmbientLightEnabled } = useAmbientLight();
+// Screen-sharing permission is deliberately requested afresh for each session.
+const captureEnabled = ref(false);
+const capturePending = ref(false);
+const captureError = ref("");
+const captureSupported = ref(false);
+const captureReducedMotion = ref(false);
 const repeatEnabled = ref(false);
 const settingsVisible = ref(true);
 const showUnmutePrompt = ref(false);
@@ -102,6 +131,101 @@ let settingsHideTimer = null;
 const repeatRestartTimers = new Set();
 const autoplayStartTimers = new Set();
 const USER_GESTURE_KEY = "yt_user_gesture_v1";
+let captureSession = null;
+let captureController = null;
+let captureSequence = 0;
+let captureDisposed = false;
+let captureMotionQuery = null;
+
+function stopAmbientCapture() {
+  captureSequence += 1;
+  captureController?.abort();
+  captureController = null;
+  captureSession?.stop();
+  captureSession = null;
+  captureEnabled.value = false;
+  capturePending.value = false;
+  captureError.value = "";
+  emit("ambient-source", null);
+}
+
+function captureErrorMessage(captureFailure) {
+  if (captureFailure?.name === "NotAllowedError") {
+    return "共有が許可されませんでした。オンにして「このタブ」を選び直してください。";
+  }
+  if (captureFailure?.code === "EDUCATION_CAPTURE_CURRENT_TAB") {
+    return "現在開いているこのタブを選択してください。画面全体や別のタブでは開始できません。";
+  }
+  if (captureFailure?.code === "EDUCATION_CAPTURE_UNSUPPORTED") {
+    return "このブラウザではタブ共有による映像連動を利用できません。";
+  }
+  return "共有映像を利用できませんでした。もう一度オンにしてください。";
+}
+
+async function handleAmbientLightChange(event) {
+  if (!event.target.checked) {
+    stopAmbientCapture();
+    return;
+  }
+  if (captureDisposed || capturePending.value || captureEnabled.value) return;
+  captureError.value = "";
+  const host = playerHostRef.value;
+  if (!host || captureReducedMotion.value || !supportsEducationAmbientCapture()) {
+    event.target.checked = false;
+    captureError.value = host && !captureReducedMotion.value
+      ? "このブラウザではタブ共有による映像連動を利用できません。"
+      : "プレイヤーを表示してから、もう一度オンにしてください。";
+    showSettingsBox();
+    return;
+  }
+
+  const sequence = ++captureSequence;
+  const controller = new AbortController();
+  captureController = controller;
+  captureEnabled.value = true;
+  capturePending.value = true;
+  try {
+    // Invoke the browser chooser inside this user gesture, before any await.
+    const session = await startEducationAmbientCapture(host, {
+      signal: controller.signal,
+      onEnded: (captureFailure) => {
+        if (sequence !== captureSequence || captureDisposed) return;
+        stopAmbientCapture();
+        if (captureFailure?.code !== "EDUCATION_CAPTURE_ENDED") {
+          captureError.value = captureFailure ? captureErrorMessage(captureFailure) : "";
+          if (captureError.value) showSettingsBox();
+        }
+      },
+    });
+    if (sequence !== captureSequence || controller.signal.aborted || captureDisposed) {
+      session.stop();
+      return;
+    }
+    captureSession = session;
+    capturePending.value = false;
+    setAmbientLightEnabled(true);
+    emit("ambient-source", { video: session.video, visibilityTarget: host });
+  } catch (captureFailure) {
+    if (sequence !== captureSequence || captureDisposed) return;
+    stopAmbientCapture();
+    captureError.value = captureErrorMessage(captureFailure);
+    showSettingsBox();
+  }
+}
+
+function syncCaptureMotionPreference() {
+  captureReducedMotion.value = !!captureMotionQuery?.matches;
+  if (captureReducedMotion.value) stopAmbientCapture();
+}
+
+function handleCaptureSettingChange(event) {
+  if (event.type === "storage" && event.key !== AMBIENT_LIGHT_STORAGE_KEY && event.key !== null) return;
+  const enabled = typeof event.detail?.enabled === "boolean"
+    ? event.detail.enabled : loadAmbientLight();
+  // An explicit OFF must also cancel a pending chooser when the master was
+  // already OFF; a watcher alone cannot see an unchanged boolean value.
+  if (!enabled && (capturePending.value || captureEnabled.value)) stopAmbientCapture();
+}
 
 function clearRepeatRestartTimers() {
   for (const timer of repeatRestartTimers) window.clearTimeout(timer);
@@ -272,12 +396,15 @@ async function fetchEducationStream(id, sequence) {
   if (typeof url !== "string" || !url.trim()) {
     throw new Error("YouTube EducationのURLが空です (JSON)");
   }
-  streamUrl.value = url;
+  streamUrl.value = configureYoutubeEducationEmbedUrl(url, {
+    autoplay: autoplayEnabled.value,
+  });
   iframeRenderKey.value += 1;
 }
 
 async function fetchStream(id, forceRefresh = false) {
   const sequence = ++requestSequence;
+  stopAmbientCapture();
   destroyPlayer();
   streamUrl.value = "";
   error.value = "";
@@ -296,12 +423,11 @@ async function fetchStream(id, forceRefresh = false) {
     }
     if (sequence !== requestSequence) return;
 
-    if (!playerData) return;
     await nextTick();
     if (sequence !== requestSequence) return;
 
     try {
-      await ensureYoutubeEducationPlayerApi(playerData.widgetApiSource);
+      await ensureYoutubeEducationPlayerApi(playerData?.widgetApiSource);
       await nextTick();
       initializePlayer(sequence);
     } catch (playerApiError) {
@@ -344,6 +470,14 @@ function showSettingsBox() {
 }
 
 onMounted(() => {
+  captureSupported.value = supportsEducationAmbientCapture();
+  captureMotionQuery = window.matchMedia?.("(prefers-reduced-motion: reduce)") || null;
+  syncCaptureMotionPreference();
+  if (captureMotionQuery?.addEventListener) captureMotionQuery.addEventListener("change", syncCaptureMotionPreference);
+  else captureMotionQuery?.addListener?.(syncCaptureMotionPreference);
+  window.addEventListener("pagehide", stopAmbientCapture);
+  window.addEventListener(AMBIENT_LIGHT_SETTING_EVENT, handleCaptureSettingChange);
+  window.addEventListener("storage", handleCaptureSettingChange);
   window.addEventListener(AUTOPLAY_SETTING_EVENT, handleAutoplaySettingChange);
   window.addEventListener("mousemove", showSettingsBox);
   window.addEventListener("click", showSettingsBox);
@@ -352,6 +486,13 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  captureDisposed = true;
+  stopAmbientCapture();
+  window.removeEventListener("pagehide", stopAmbientCapture);
+  window.removeEventListener(AMBIENT_LIGHT_SETTING_EVENT, handleCaptureSettingChange);
+  window.removeEventListener("storage", handleCaptureSettingChange);
+  if (captureMotionQuery?.removeEventListener) captureMotionQuery.removeEventListener("change", syncCaptureMotionPreference);
+  else captureMotionQuery?.removeListener?.(syncCaptureMotionPreference);
   requestSequence += 1;
   window.removeEventListener(AUTOPLAY_SETTING_EVENT, handleAutoplaySettingChange);
   window.removeEventListener("mousemove", showSettingsBox);
@@ -360,6 +501,10 @@ onBeforeUnmount(() => {
   if (settingsHideTimer !== null) window.clearTimeout(settingsHideTimer);
   destroyPlayer();
 });
+
+watch(ambientLightEnabled, (enabled) => {
+  if (!enabled) stopAmbientCapture();
+}, { flush: "sync" });
 
 watch(repeatEnabled, (enabled) => {
   if (enabled) {
@@ -426,6 +571,13 @@ watch(
 .autoplay-disabled {
   position: relative;
   color: rgba(255, 255, 255, 0.5);
+}
+.ambient-capture-help {
+  max-width: 250px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+  font-size: 11px;
 }
 .autoplay-disabled::after {
   position: absolute;

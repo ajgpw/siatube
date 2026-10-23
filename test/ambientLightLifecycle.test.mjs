@@ -249,3 +249,19 @@ test("reduced motion keeps the thumbnail and suspends live rendering", async (t)
   assert.equal(light.state.hasFrame, false);
   assert.equal(light.state.thumbnailLoaded, true);
 });
+
+test("captured media forwards the visible player and rebinds when the target changes", async (t) => {
+  const { instances } = installBrowser(t);
+  const light = mountLight(t);
+  const host = {};
+  light.props.visibilityTarget = host;
+  await flush();
+  assert.equal(instances.at(-1).callbacks.visibilityTarget, host);
+
+  const previous = instances.at(-1);
+  const replacement = {};
+  light.props.visibilityTarget = replacement;
+  await flush();
+  assert.equal(previous.disposed, true);
+  assert.equal(instances.at(-1).callbacks.visibilityTarget, replacement);
+});

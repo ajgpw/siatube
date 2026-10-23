@@ -2,10 +2,24 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  configureYoutubeEducationEmbedUrl,
   createYoutubeEducationEmbedUrl,
+  ensureYoutubeEducationPlayerApi,
   loadYoutubeEducationPlayerData,
 } from
   "../src/utils/player/youtubeEducationPlayer.js";
+
+test("取得したEducation URLの認証パラメータを保持してAPIと自動再生を有効にする", () => {
+  const url = new URL(configureYoutubeEducationEmbedUrl(
+    "https://www.youtubeeducation.com/embed/abcdefghijk?token=a%2Bb&enablejsapi=0&autoplay=0",
+    { autoplay: true },
+  ));
+  assert.equal(url.pathname, "/embed/abcdefghijk");
+  assert.equal(url.searchParams.get("token"), "a+b");
+  assert.equal(url.searchParams.get("enablejsapi"), "1");
+  assert.equal(url.searchParams.get("autoplay"), "1");
+  assert.equal(new URL(configureYoutubeEducationEmbedUrl(url.href)).searchParams.get("autoplay"), "0");
+});
 
 test("Educationホスト用のIFrame Player API URLを生成する", () => {
   globalThis.window = {
@@ -62,4 +76,25 @@ test("スプレッドシートのA1とA2を同じリクエストで読み込む"
   assert.equal(url.searchParams.get("range"), "A1:A2");
   assert.equal(data.parameterText, "?foo=bar");
   assert.match(data.widgetApiSource, /window\.YT/);
+});
+
+test("補助設定を取得できなくても公式IFrame APIを読み込める", async () => {
+  let appendedScript;
+  globalThis.window = {
+    setInterval, clearInterval, setTimeout, clearTimeout,
+  };
+  globalThis.document = {
+    getElementById: () => null,
+    createElement: () => ({}),
+    head: {
+      appendChild(script) {
+        appendedScript = script;
+        window.YT = { Player() {} };
+        window.onYouTubeIframeAPIReady();
+      },
+    },
+  };
+  const api = await ensureYoutubeEducationPlayerApi();
+  assert.equal(appendedScript.src, "https://www.youtube.com/iframe_api");
+  assert.equal(api, window.YT);
 });

@@ -62,8 +62,7 @@ export async function loadYoutubeEducationPlayerData({
   return cachedPlayerData;
 }
 
-export function createYoutubeEducationEmbedUrl(
-  videoId,
+function createYoutubeEducationParameters(
   parameterText,
   { autoplay = false } = {},
 ) {
@@ -90,7 +89,18 @@ export function createYoutubeEducationEmbedUrl(
     params.set("forigin", window.location.href);
   }
 
+  return params;
+}
+
+export function createYoutubeEducationEmbedUrl(videoId, parameterText, options = {}) {
+  const params = createYoutubeEducationParameters(parameterText, options);
   return `${EDUCATION_HOST}/embed/${encodeURIComponent(videoId)}?${params}`;
+}
+
+export function configureYoutubeEducationEmbedUrl(url, options = {}) {
+  const parsed = new URL(url);
+  parsed.search = createYoutubeEducationParameters(parsed.search, options).toString();
+  return parsed.href;
 }
 
 export function ensureYoutubeEducationPlayerApi(widgetApiSource) {
@@ -98,9 +108,6 @@ export function ensureYoutubeEducationPlayerApi(widgetApiSource) {
     return Promise.resolve(window.YT);
   }
   if (widgetApiPromise) return widgetApiPromise;
-  if (typeof widgetApiSource !== "string" || !widgetApiSource.trim()) {
-    return Promise.reject(new Error("Player APIコードが空です"));
-  }
 
   widgetApiPromise = new Promise((resolve, reject) => {
     let settled = false;
@@ -144,7 +151,11 @@ export function ensureYoutubeEducationPlayerApi(widgetApiSource) {
     if (!script) {
       script = document.createElement("script");
       script.id = WIDGET_API_SCRIPT_ID;
-      script.textContent = widgetApiSource;
+      if (typeof widgetApiSource === "string" && widgetApiSource.trim()) {
+        script.textContent = widgetApiSource;
+      } else {
+        script.src = "https://www.youtube.com/iframe_api";
+      }
       document.head.appendChild(script);
     }
     finish();

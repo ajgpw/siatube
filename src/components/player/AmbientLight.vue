@@ -28,6 +28,7 @@ import { createAmbientLightRenderer } from "@/utils/player/ambientLightRenderer.
 
 const props = defineProps({
   video: { type: Object, default: null },
+  visibilityTarget: { type: Object, default: null },
   thumbnail: { type: String, default: "" },
 });
 const { enabled } = useAmbientLight();
@@ -49,10 +50,11 @@ function syncMotionPreference() {
 }
 
 watch(() => props.thumbnail, () => { thumbnailLoaded.value = false; });
-watch([enabled, reducedMotion, () => props.video, canvasRef], () => {
+watch([enabled, reducedMotion, () => props.video, () => props.visibilityTarget, canvasRef], () => {
   stopRenderer();
   if (!enabled.value || reducedMotion.value || !props.video || !canvasRef.value) return;
   renderer = createAmbientLightRenderer(props.video, canvasRef.value, {
+    visibilityTarget: props.visibilityTarget,
     onFrame: () => { hasFrame.value = true; },
     onReset: () => { hasFrame.value = false; },
   });
