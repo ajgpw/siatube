@@ -61,7 +61,7 @@ async function localPlaylist(id) {
       videoId: item.id,
       title: item.title,
       author: item.authorName,
-      thumbnail: arrayBufferToDataUrl(item.thumbnailBinary),
+      thumbnail: item.thumbnail || arrayBufferToDataUrl(item.thumbnailBinary),
       duration: null,
       views: item.views || null,
       published: item.published || null,

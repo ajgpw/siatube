@@ -120,6 +120,7 @@ import { playlist as fetchPlaylist } from "@/services/api/siatubeApi.js";
 import { getPlaylistById } from "@/services/storage/playlistManager.js";
 import { normalizePlaylist } from "@/services/api/siatubeAdapters.js";
 import { arrayBufferToDataUrl } from "@/utils/imageEncoding.js";
+import { resolveThumbnailSource } from "@/services/network/thumbnailSource.js";
 
 const props = defineProps({
   playlistId: String,
@@ -180,7 +181,7 @@ async function localPlaylistData(id) {
       videoId: item.id,
       title: item.title,
       author: item.authorName,
-      thumbnail: arrayBufferToDataUrl(item.thumbnailBinary),
+      thumbnail: item.thumbnail || arrayBufferToDataUrl(item.thumbnailBinary),
       duration: null,
       views: item.views || null,
       published: item.published || null,
@@ -284,12 +285,12 @@ watch(playVideoId, (newVideoId, oldVideoId) => {
 });
 
 function getPrimaryThumbnail(id) {
-  return `https://i.ytimg.com/vi/${id}/sddefault.jpg`;
+  return resolveThumbnailSource(id);
 }
 
 function onImageError(event, id) {
   if (!event.target.dataset.error) {
-    event.target.src = `https://i.ytimg.com/vi/${id}/sddefault.jpg`;
+    event.target.src = getPrimaryThumbnail(id);
     event.target.dataset.error = "true";
   }
 }

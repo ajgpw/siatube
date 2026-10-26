@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  channel,
   clearStreamCache,
   comments,
   isVideoStreamError,
@@ -38,6 +39,7 @@ test("resource helpers generate the documented paths and query parameters", asyn
   await video("dQw4w9WgXcQ", { depth: 2, token: "related" });
   await comments("dQw4w9WgXcQ", { sort: "new", continuation: "comments" });
   await playlist("UUone====PLtwo", { token: "playlist", v: "dQw4w9WgXcQ" });
+  await channel("UCtest", { raw: true });
 
   assert.equal(urls[0].pathname, "/api/search");
   assert.equal(urls[0].searchParams.get("q"), "猫");
@@ -50,6 +52,14 @@ test("resource helpers generate the documented paths and query parameters", asyn
   assert.equal(urls[3].searchParams.get("sort"), "new");
   assert.equal(urls[3].searchParams.get("continuation"), "comments");
   assert.equal(decodeURIComponent(urls[4].pathname), "/api/playlist/UUone====PLtwo");
+  assert.equal(urls[5].pathname, "/api/channel/UCtest");
+  assert.equal(urls[5].searchParams.get("raw"), "true");
+  for (const index of [0, 2, 4, 5]) {
+    assert.equal(urls[index].searchParams.get("img"), "txt");
+  }
+  for (const index of [1, 3]) {
+    assert.equal(urls[index].searchParams.has("img"), false);
+  }
 });
 
 test("same-video stream requests share one in-flight API call and cache", async (t) => {
@@ -255,7 +265,7 @@ test("configured proxy wraps SiaTube GET requests without changing the method", 
 
   await search("proxy test", { retries: 0 });
 
-  const target = "https://siatube.com/api/search?q=proxy+test";
+  const target = "https://siatube.com/api/search?q=proxy+test&img=txt";
   assert.equal(
     requestedUrl,
     `https://proxy.test/forward?url=${encodeURIComponent(target)}`,
@@ -369,7 +379,7 @@ test("a request keeps its initial proxy URL across retries", async (t) => {
 
   await search("snapshot", { retries: 1, timeout: 0 });
 
-  const target = "https://siatube.com/api/search?q=snapshot";
+  const target = "https://siatube.com/api/search?q=snapshot&img=txt";
   const expectedUrl = `${initialProxyUrl}?url=${encodeURIComponent(target)}`;
   assert.deepEqual(requestedUrls, [expectedUrl, expectedUrl]);
 });
@@ -505,7 +515,7 @@ test("JSONP proxy injects a script, preserves the target query, and accepts dire
   assert.equal(scriptUrls.length, 1);
   const scriptUrl = new URL(scriptUrls[0]);
   const callbackName = scriptUrl.searchParams.get("callback");
-  const targetUrl = "https://siatube.com/api/search?q=JSONP+%26+query";
+  const targetUrl = "https://siatube.com/api/search?q=JSONP+%26+query&img=txt";
   assert.match(callbackName, /^__siatubeJsonp_/);
   assert.equal(scriptUrl.searchParams.get("url"), targetUrl);
   assert.equal(
@@ -579,7 +589,7 @@ test("JSONP retries an ok:false response using the request's initial proxy setti
   assert.deepEqual(result, { items: ["retried"] });
   assert.equal(fetchCalls, 0);
   assert.equal(scriptUrls.length, 2);
-  const targetUrl = "https://siatube.com/api/search?q=snapshot+jsonp";
+  const targetUrl = "https://siatube.com/api/search?q=snapshot+jsonp&img=txt";
   for (const source of scriptUrls) {
     const parsed = new URL(source);
     assert.equal(`${parsed.origin}${parsed.pathname}`, initialProxyUrl);

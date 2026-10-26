@@ -128,6 +128,7 @@ test("SiaTube API completes URL-parameter authentication and replays the origina
   });
   const replay = calls.filter((url) => url.pathname === "/api/search").at(-1);
   assert.equal(replay.searchParams.get("q"), "猫");
+  assert.equal(replay.searchParams.get("img"), "txt");
   assert.equal(replay.searchParams.get("guard_sid"), SESSION_ID);
 });
 
@@ -142,6 +143,7 @@ for (const savedSession of [null, SESSION_ID]) {
         assert.equal(url.searchParams.get("q"), "猫 & GAS");
         assert.equal(url.searchParams.get("token"), "next+page");
         assert.equal(url.searchParams.get("raw"), "true");
+        assert.equal(url.searchParams.get("img"), "txt");
         assert.equal(url.searchParams.get("guard_sid"), searchCalls === 1
           ? savedSession
           : REPLACEMENT_SESSION_ID);
@@ -251,6 +253,7 @@ test("direct-payload GAS JSONP authenticates even when upstream status and heade
   const searchTargets = targets.filter((url) => url.pathname === "/api/search");
   assert.equal(searchTargets.length, 2);
   assert.equal(searchTargets[1].searchParams.get("q"), "gas query");
+  assert.equal(searchTargets[1].searchParams.get("img"), "txt");
   assert.equal(searchTargets[1].searchParams.get("guard_sid"), SESSION_ID);
 });
 

@@ -85,7 +85,6 @@ const loadHistory = async () => {
     console.log('[HistoryView] Starting loadHistory...');
     loading.value = true;
     videos.value = await getHistoryVideos();
-    console.log('[HistoryView] Loaded videos:', videos.value);
   } catch (error) {
     console.error('[HistoryView] Failed to load history:', error);
     console.error('[HistoryView] Error stack:', error.stack);

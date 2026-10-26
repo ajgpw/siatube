@@ -3,6 +3,11 @@ import { guardedGet } from "../guard/guarded-request.js";
 import { redactGuardPayload, redactGuardUrl } from "../guard/guard-session.js";
 import { loadDisableTimeouts } from "../storage/settingsManager.js";
 import {
+  isThumbnailProxyAvailable,
+  normalizeThumbnailPayload,
+  selectThumbnailMode,
+} from "../network/thumbnailSource.js";
+import {
   isRequestProxyLoadFailure,
   loadRequestProxy,
   loadRequestProxyJsonp,
@@ -498,6 +503,44 @@ export async function getJson(path, options = {}) {
   );
 }
 
+async function getThumbnailJson(path, options = {}, videoId = "") {
+  const { signal } = options;
+  if (signal?.aborted) throw abortError(signal);
+
+  let mode;
+  try {
+    mode = await selectThumbnailMode({ signal });
+  } catch (error) {
+    if (signal?.aborted) throw abortError(signal);
+    throw error;
+  }
+  if (signal?.aborted) throw abortError(signal);
+
+  const request = (img) => getJson(path, {
+    ...options,
+    query: { ...options.query, img },
+  });
+  let payload = await request(mode);
+  if (mode === "url") {
+    // The first API request may establish or renew the authenticated session.
+    // Test the image proxy with that session before exposing its image URLs.
+    let available;
+    try {
+      available = await isThumbnailProxyAvailable({ signal });
+    } catch (error) {
+      if (signal?.aborted) throw abortError(signal);
+      throw error;
+    }
+    if (signal?.aborted) throw abortError(signal);
+    if (!available) {
+      mode = "txt";
+      payload = await request(mode);
+    }
+  }
+  if (signal?.aborted) throw abortError(signal);
+  return normalizeThumbnailPayload(payload, { mode, videoId });
+}
+
 export function search(input, options = {}) {
   const params = typeof input === "string" ? { q: input } : (input || {});
   const mergedOptions = typeof input === "object" && input !== null
@@ -508,7 +551,7 @@ export function search(input, options = {}) {
   const token = typeof params.token === "string" ? params.token.trim() : "";
   if (!q && !token) throw validationError("q or token is required");
 
-  return getJson("/api/search", {
+  return getThumbnailJson("/api/search", {
     ...mergedOptions,
     query: {
       q: q || undefined,
@@ -545,14 +588,14 @@ export function video(id, options = {}) {
     token = undefined;
     queryDepth = undefined;
   }
-  return getJson(`/api/video/${pathSegment(requestId, "id")}`, {
+  return getThumbnailJson(`/api/video/${pathSegment(requestId, "id")}`, {
     ...requestOptions(options),
     query: {
       token,
       depth: queryDepth,
       raw: booleanQuery(options.raw),
     },
-  });
+  }, videoId);
 }
 
 export function comments(videoId, options = {}) {
@@ -583,14 +626,14 @@ export function commentReplies(videoId, continuation, options = {}) {
 }
 
 export function channel(id, options = {}) {
-  return getJson(`/api/channel/${pathSegment(id, "id")}`, {
+  return getThumbnailJson(`/api/channel/${pathSegment(id, "id")}`, {
     ...requestOptions(options),
     query: { raw: booleanQuery(options.raw) },
   });
 }
 
 export function playlist(id, options = {}) {
-  return getJson(`/api/playlist/${pathSegment(id, "id")}`, {
+  return getThumbnailJson(`/api/playlist/${pathSegment(id, "id")}`, {
     ...requestOptions(options),
     query: {
       token: options.token,

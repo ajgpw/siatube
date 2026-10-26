@@ -27,7 +27,7 @@
             :src="authorThumbnailUrl"
             alt="チャンネルアイコン"
             class="channel-icon"
-            @error="onImageError($event, authorId)"
+            @error="onImageError"
           />
         </div>
         <div class="channel-text">
@@ -532,6 +532,7 @@
 
 <script>
 import { video as fetchVideo } from "@/services/api/siatubeApi.js";
+import { resolveThumbnailSource } from "@/services/network/thumbnailSource.js";
 import { addVideoToHistory } from "@/services/storage/historyManager.js";
 import PlaylistComponent from "@/components/playlist/Playlist.vue";
 import Comment from "@/components/video/Comment.vue";
@@ -714,11 +715,6 @@ export default {
           };
         }
       });
-
-      if (mapped.length > 0) {
-        console.log("First related video item:", mapped[0]);
-        console.log("Raw API response first item:", feed[0]);
-      }
 
       return mapped;
     },
@@ -1051,13 +1047,10 @@ export default {
       this.fetchVideoData(this.videoId);
     },
     getPrimaryThumbnail(id) {
-      return `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+      return resolveThumbnailSource(id);
     },
-    onImageError(event, id) {
-      if (!event.target.dataset.error) {
-        event.target.src = `https://i.ytimg.com/vi/${id}/sddefault.jpg`;
-        event.target.dataset.error = true;
-      }
+    onImageError(event) {
+      event.target.style.display = "none";
     },
     toggleDescription() {
       this.showFullDescription = !this.showFullDescription;

@@ -432,6 +432,7 @@ import ChannelContentCard from "@/components/channel/ChannelContentCard.vue";
 import VideoList from "@/components/playlist/Playlist.vue";
 import { channel as fetchChannel } from "@/services/api/siatubeApi.js";
 import { normalizeChannel } from "@/services/api/siatubeAdapters.js";
+import { resolveThumbnailSource } from "@/services/network/thumbnailSource.js";
 import subscriptionManager from "@/services/storage/subscriptionManager.js";
 
 const props = defineProps({ channelId: String });
@@ -543,7 +544,7 @@ const featureImage = computed(() =>
   topVideo.value?.thumbnail ||
   topVideo.value?.thumbnailUrl ||
   (topVideo.value?.videoId
-    ? `https://i.ytimg.com/vi/${topVideo.value.videoId}/maxresdefault.jpg`
+    ? resolveThumbnailSource(topVideo.value.videoId)
     : "")
 );
 const topVideoMeta = computed(() => {
@@ -757,8 +758,8 @@ function reloadChannel() {
 function handleFeatureImageError(event) {
   const element = event.currentTarget;
   const urlFallback = topVideo.value?.thumbnailUrl;
-  const youtubeFallback = topVideo.value?.videoId
-    ? `https://i.ytimg.com/vi/${topVideo.value.videoId}/hqdefault.jpg`
+  const thumbnailFallback = topVideo.value?.videoId
+    ? resolveThumbnailSource(topVideo.value.videoId)
     : "";
 
   if (urlFallback && element.src !== urlFallback && element.dataset.urlFallback !== "true") {
@@ -766,9 +767,9 @@ function handleFeatureImageError(event) {
     element.src = urlFallback;
     return;
   }
-  if (youtubeFallback && element.src !== youtubeFallback && element.dataset.youtubeFallback !== "true") {
-    element.dataset.youtubeFallback = "true";
-    element.src = youtubeFallback;
+  if (thumbnailFallback && element.src !== thumbnailFallback && element.dataset.thumbnailFallback !== "true") {
+    element.dataset.thumbnailFallback = "true";
+    element.src = thumbnailFallback;
     return;
   }
   featureImageFailed.value = true;

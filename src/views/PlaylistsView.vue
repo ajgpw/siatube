@@ -63,8 +63,8 @@
           <div class="detail-sidebar">
             <div class="sidebar-content">
               <div class="detail-thumb">
-                <img v-if="selected.items && selected.items[0] && selected.items[0].thumbnailBinary" 
-                     :src="arrayBufferToDataUrl(selected.items[0].thumbnailBinary)" />
+                <img v-if="selected.items?.[0]?.thumbnail"
+                     :src="selected.items[0].thumbnail" />
                 <div v-else class="detail-placeholder">{{ selected.name.charAt(0) }}</div>
               </div>
               
@@ -90,7 +90,7 @@
                 <div class="index-number">{{ index + 1 }}</div>
                 
                 <div class="item-thumb-wrapper" @click="playVideoDirect(item.id)">
-                  <img v-if="item.thumbnailBinary" :src="arrayBufferToDataUrl(item.thumbnailBinary)" class="item-thumb" />
+                  <img v-if="item.thumbnail" :src="item.thumbnail" class="item-thumb" />
                   <div v-else class="item-thumb-placeholder"></div>
                 </div>
 
@@ -122,7 +122,6 @@
 import { ref, onMounted } from 'vue';
 import { getPlaylists, createPlaylist as createPl, deletePlaylist as deletePl, getPlaylistById, removeVideoFromPlaylist } from '@/services/storage/playlistManager.js';
 import { useRouter } from 'vue-router';
-import { arrayBufferToDataUrl } from '@/utils/imageEncoding.js';
 
 const playlists = ref([]);
 const loading = ref(true);

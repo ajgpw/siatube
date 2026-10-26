@@ -1,7 +1,8 @@
 /**
  * プレイリスト管理（IndexedDB）
  */
-import { arrayBufferToDataUrl, base64ToArrayBuffer } from '../../utils/imageEncoding.js';
+import { storedThumbnailValue, thumbnailStorageFields } from '../../utils/imageEncoding.js';
+import { resolveThumbnailSource, selectThumbnailMode, thumbnailForStorage } from '../network/thumbnailSource.js';
 
 const DB_NAME = 'PlaylistsDB';
 const DB_VERSION = 1;
@@ -30,11 +31,11 @@ export async function initPlaylistsDB() {
 
 export async function createPlaylist(name, thumbnailBase64 = null) {
   await initPlaylistsDB();
-  const thumbnailBinary = base64ToArrayBuffer(thumbnailBase64);
+  const thumbnailFields = thumbnailStorageFields(thumbnailForStorage(thumbnailBase64));
   return new Promise((resolve, reject) => {
     const tx = db.transaction([STORE_PLAYLISTS], 'readwrite');
     const store = tx.objectStore(STORE_PLAYLISTS);
-    const record = { name, thumbnailBinary, items: [], createdAt: Date.now() };
+    const record = { name, ...thumbnailFields, items: [], createdAt: Date.now() };
     const req = store.add(record);
     req.onerror = () => reject(req.error);
     req.onsuccess = () => resolve({ id: req.result, ...record });
@@ -43,6 +44,7 @@ export async function createPlaylist(name, thumbnailBase64 = null) {
 
 export async function getPlaylists() {
   await initPlaylistsDB();
+  await selectThumbnailMode();
   return new Promise((resolve, reject) => {
     const tx = db.transaction([STORE_PLAYLISTS], 'readonly');
     const store = tx.objectStore(STORE_PLAYLISTS);
@@ -52,8 +54,8 @@ export async function getPlaylists() {
       const list = req.result.map(r => ({
         id: r.id,
         name: r.name,
-        thumbnail: arrayBufferToDataUrl(r.thumbnailBinary),
-        items: r.items || [],
+        thumbnail: resolveThumbnailSource(storedThumbnailValue(r)),
+        items: (r.items || []).map(resolveStoredItem),
         createdAt: r.createdAt,
       }));
       resolve(list);
@@ -80,11 +82,7 @@ export async function addVideoToPlaylist(playlistId, videoData) {
         description: videoData.description?.run0 || '',
         timestamp: Date.now(),
       };
-      // thumbnail binary
-      if (videoData.thumbnail) {
-        const bin = base64ToArrayBuffer(videoData.thumbnail);
-        item.thumbnailBinary = bin;
-      }
+      Object.assign(item, thumbnailStorageFields(thumbnailForStorage(videoData.thumbnail)));
       rec.items = rec.items || [];
       // prevent duplicates by id
       rec.items = rec.items.filter(it => it.id !== item.id);
@@ -98,6 +96,7 @@ export async function addVideoToPlaylist(playlistId, videoData) {
 
 export async function getPlaylistById(id) {
   await initPlaylistsDB();
+  await selectThumbnailMode();
   return new Promise((resolve, reject) => {
     const tx = db.transaction([STORE_PLAYLISTS], 'readonly');
     const store = tx.objectStore(STORE_PLAYLISTS);
@@ -109,12 +108,16 @@ export async function getPlaylistById(id) {
       resolve({
         id: r.id,
         name: r.name,
-        thumbnail: arrayBufferToDataUrl(r.thumbnailBinary),
-        items: r.items || [],
+        thumbnail: resolveThumbnailSource(storedThumbnailValue(r)),
+        items: (r.items || []).map(resolveStoredItem),
         createdAt: r.createdAt,
       });
     };
   });
+}
+
+function resolveStoredItem(item) {
+  return { ...item, thumbnail: resolveThumbnailSource(storedThumbnailValue(item)) };
 }
 
 export async function deletePlaylist(id) {

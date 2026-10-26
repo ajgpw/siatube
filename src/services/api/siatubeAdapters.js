@@ -1,3 +1,5 @@
+import { resolveThumbnailSource } from "../network/thumbnailSource.js";
+
 function firstNonEmpty(...values) {
   return values.find((value) => value !== null && value !== undefined && value !== "") ?? "";
 }
@@ -66,7 +68,7 @@ export function normalizeSearchItem(item) {
     title: item.title || "",
     thumbnails: thumbnailSet(
       item.thumbnails,
-      videoId ? `https://i.ytimg.com/vi/${videoId}/sddefault.jpg` : ""
+      videoId ? resolveThumbnailSource(videoId) : ""
     ),
     duration: item.duration || "",
     badges: asArray(item.badges),

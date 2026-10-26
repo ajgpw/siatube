@@ -1,6 +1,6 @@
 {
   "name": "siatube",
-  "version": "2.2.2",
+  "version": "2.2.3",
   "type": "module",
   "engines": {
     "node": "^20.19.0 || >=22.12.0",
@@ -8,8 +8,10 @@
   },
   "scripts": {
     "dev": "vite",
+    "prebuild": "node scripts/sync-version.mjs",
     "build": "vite build && node scripts/build-single-html.mjs",
     "test": "node --test",
+    "release": "node scripts/release.mjs",
     "preview": "vite preview",
     "start": "vite preview --host 0.0.0.0 --port 8010"
   },

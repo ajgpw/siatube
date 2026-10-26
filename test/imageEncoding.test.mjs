@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { arrayBufferToDataUrl, base64ToArrayBuffer } from '../src/utils/imageEncoding.js';
+import {
+  arrayBufferToDataUrl,
+  base64ToArrayBuffer,
+  storedThumbnailValue,
+  thumbnailStorageFields,
+} from '../src/utils/imageEncoding.js';
 
 test('decodes raw base64 and image data URLs into the same stored bytes', () => {
   const expected = Uint8Array.from([0, 1, 127, 128, 254, 255]);
@@ -42,4 +47,29 @@ test('missing and unreadable thumbnail data retain the null fallback', () => {
 test('empty binary thumbnails remain empty data URLs', () => {
   assert.equal(arrayBufferToDataUrl(new ArrayBuffer(0)), 'data:image/jpeg;base64,');
   assert.equal(base64ToArrayBuffer('data:image/jpeg;base64,').byteLength, 0);
+});
+
+test('URL and video ID thumbnails retain their sources instead of becoming binary', () => {
+  for (const value of [
+    'https://img.youtube.com/vi/dQw4w9WgXcQ/sddefault.jpg',
+    'https://example.com/thumbnail,AAF/gP7/',
+    'dQw4w9WgXcQ',
+    'aaaaaaaaaaa',
+  ]) {
+    assert.equal(base64ToArrayBuffer(value), null);
+    const fields = thumbnailStorageFields(value);
+    assert.equal(fields.thumbnailBinary, null);
+    assert.equal(fields.thumbnailSource, value);
+    assert.equal(storedThumbnailValue(fields), value);
+  }
+});
+
+test('storage preserves legacy binary thumbnails and missing image fallbacks', () => {
+  const fields = thumbnailStorageFields('data:image/jpeg;base64,AAF/gP7/');
+  assert.equal(fields.thumbnailSource, null);
+  assert.equal(storedThumbnailValue(fields), 'data:image/jpeg;base64,AAF/gP7/');
+  assert.equal(storedThumbnailValue({ thumbnailBinary: fields.thumbnailBinary }),
+    'data:image/jpeg;base64,AAF/gP7/');
+  assert.equal(storedThumbnailValue({}), null);
+  assert.equal(storedThumbnailValue(thumbnailStorageFields(null)), null);
 });

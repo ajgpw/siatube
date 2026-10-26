@@ -1,8 +1,9 @@
 /**
  * IndexedDB を使用した動画履歴管理
- * base64 エンコードされたサムネイルをバイナリに変換して保存
+ * サムネイルはバイナリまたはセッション情報を含まない画像ソースとして保存
  */
-import { arrayBufferToDataUrl, base64ToArrayBuffer } from '../../utils/imageEncoding.js';
+import { storedThumbnailValue, thumbnailStorageFields } from '../../utils/imageEncoding.js';
+import { resolveThumbnailSource, selectThumbnailMode, thumbnailForStorage } from '../network/thumbnailSource.js';
 
 const DB_NAME = 'VideoHistory';
 const DB_VERSION = 1;
@@ -60,7 +61,7 @@ export async function addVideoToHistory(videoData) {
       views: videoData.views || 0,
       authorName: videoData.author?.name || '',
       description: videoData.description?.run0 || '',
-      thumbnailBinary: base64ToArrayBuffer(videoData.thumbnail),
+      ...thumbnailStorageFields(thumbnailForStorage(videoData.thumbnail)),
       timestamp: Date.now(),
     };
 
@@ -86,6 +87,7 @@ export async function getHistoryVideos() {
   try {
     console.log('getHistoryVideos called');
     await initDB();
+    await selectThumbnailMode();
     console.log('DB initialized');
 
     return new Promise((resolve, reject) => {
@@ -105,7 +107,7 @@ export async function getHistoryVideos() {
         // タイムスタンプの新しい順にソート
         records.sort((a, b) => b.timestamp - a.timestamp);
 
-        // ArrayBuffer を base64 に変換して返す
+        // 保存済みソースまたは従来のバイナリから表示用サムネイルを返す
         const videos = records.map((record) => {
           console.log('Converting record:', record.id);
           return {
@@ -114,12 +116,11 @@ export async function getHistoryVideos() {
             views: record.views,
             authorName: record.authorName,
             description: record.description,
-            thumbnail: arrayBufferToDataUrl(record.thumbnailBinary),
+            thumbnail: resolveThumbnailSource(storedThumbnailValue(record)),
             timestamp: record.timestamp,
           };
         });
 
-        console.log('Resolved videos:', videos);
         resolve(videos);
       };
     });

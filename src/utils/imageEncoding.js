@@ -6,6 +6,9 @@
  */
 export function base64ToArrayBuffer(base64String) {
   if (!base64String) return null;
+  if (typeof base64String !== 'string' ||
+      /^(?:https?:|blob:|\/\/)/i.test(base64String) ||
+      /^[A-Za-z0-9_-]{11}$/.test(base64String)) return null;
 
   try {
     const base64 = base64String.includes(',')
@@ -20,6 +23,19 @@ export function base64ToArrayBuffer(base64String) {
   } catch {
     return null;
   }
+}
+
+/** Keep binary thumbnails compatible while preserving URL or video ID sources. */
+export function thumbnailStorageFields(value) {
+  const thumbnailBinary = base64ToArrayBuffer(value);
+  return {
+    thumbnailBinary,
+    thumbnailSource: thumbnailBinary === null && typeof value === 'string' ? value : null,
+  };
+}
+
+export function storedThumbnailValue(record) {
+  return record?.thumbnailSource || arrayBufferToDataUrl(record?.thumbnailBinary);
 }
 
 /**

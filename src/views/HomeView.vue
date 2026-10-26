@@ -33,18 +33,20 @@
         表示回数
         <img src="https://count.getloli.com/@:siatube?name=%3Asiatube&theme=minecraft&padding=7&offset=0&align=top&scale=1&pixelated=1&darkmode=auto" style="width: 50%; max-width: 380px;">
       </div>
-      <div style="color: var(--text-secondary);">バージョン2.2.2</div>
+      <div style="color: var(--text-secondary);">バージョン{{ appVersion }}</div>
     </footer>
   </div>
 </template>
 
 <script>
 import VideoList from "@/components/video/VideoList.vue";
+import { APP_VERSION } from "@/config/version.js";
 
 export default {
   components: { VideoList },
   data() {
     return {
+      appVersion: APP_VERSION,
       trend: {
         trending: [],
         music: [],

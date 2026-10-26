@@ -169,6 +169,7 @@
 <script setup>
 import { computed, ref, watch } from "vue";
 import { RouterLink } from "vue-router";
+import { resolveThumbnailSource } from "@/services/network/thumbnailSource.js";
 
 const props = defineProps({
   item: {
@@ -192,12 +193,12 @@ const isPost = computed(() => props.item.type === "post");
 const isPlaylist = computed(() => props.item.type === "playlist");
 const isShort = computed(() => props.item.type === "short");
 const primaryImage = computed(
-  () => props.item.thumbnail || props.item.thumbnailUrl || fallbackYoutubeThumbnail.value
+  () => props.item.thumbnail || props.item.thumbnailUrl || fallbackThumbnail.value
 );
 const authorIcon = computed(() => props.item.icon || props.item.iconUrl || "");
 const authorInitial = computed(() => (props.item.author || "C").trim().slice(0, 1).toUpperCase());
-const fallbackYoutubeThumbnail = computed(() =>
-  props.item.videoId ? `https://i.ytimg.com/vi/${props.item.videoId}/hqdefault.jpg` : ""
+const fallbackThumbnail = computed(() =>
+  props.item.videoId ? resolveThumbnailSource(props.item.videoId) : ""
 );
 
 const internalPath = computed(() => {
@@ -294,16 +295,16 @@ function plainText(value) {
 function handleThumbnailError(event) {
   const element = event.currentTarget;
   const urlFallback = props.item.thumbnailUrl;
-  const youtubeFallback = fallbackYoutubeThumbnail.value;
+  const thumbnailFallback = fallbackThumbnail.value;
 
   if (urlFallback && element.src !== urlFallback && element.dataset.urlFallback !== "true") {
     element.dataset.urlFallback = "true";
     element.src = urlFallback;
     return;
   }
-  if (youtubeFallback && element.src !== youtubeFallback && element.dataset.youtubeFallback !== "true") {
-    element.dataset.youtubeFallback = "true";
-    element.src = youtubeFallback;
+  if (thumbnailFallback && element.src !== thumbnailFallback && element.dataset.thumbnailFallback !== "true") {
+    element.dataset.thumbnailFallback = "true";
+    element.src = thumbnailFallback;
     return;
   }
   imageFailed.value = true;

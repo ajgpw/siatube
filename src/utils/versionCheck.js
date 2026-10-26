@@ -1,4 +1,4 @@
-import currentVersionSource from "../../version.txt?raw";
+import { APP_VERSION } from "../config/version.js";
 import { loadRequestProxy, proxiedRequestUrl } from "../services/network/requestProxy.js";
 
 export const VERSION_SOURCE_URL =
@@ -75,7 +75,7 @@ export function replaceDocumentWithHtml(html) {
 }
 
 export async function checkForUpdate() {
-  const currentVersion = normalizeVersion(currentVersionSource);
+  const currentVersion = normalizeVersion(APP_VERSION);
   const candidates = [VERSION_SOURCE_URL];
   const proxyUrl = loadRequestProxy().url;
   if (proxyUrl) candidates.push(proxiedRequestUrl(VERSION_SOURCE_URL, proxyUrl));

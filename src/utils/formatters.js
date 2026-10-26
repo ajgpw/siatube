@@ -1,3 +1,5 @@
+import { resolveThumbnailSource } from "../services/network/thumbnailSource.js";
+
 /**
  * ISO 8601形式の動画時間をMM:SSまたはHH:MM:SS形式に変換
  */
@@ -75,5 +77,5 @@ export function formatViewCount(num) {
  * YouTube動画のサムネイル画像URLを取得
  */
 export function getPrimaryThumbnail(id) {
-  return `https://i.ytimg.com/vi/${id}/sddefault.jpg`;
+  return resolveThumbnailSource(id);
 }
