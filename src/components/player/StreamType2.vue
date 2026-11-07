@@ -22,7 +22,13 @@
     </button>
   </div>
   <div v-else-if="selectedQuality && availableQualities.length > 0" class="video-container">
-    <ExternalHlsPlayer v-if="externalM3u8Url" :url="externalM3u8Url" />
+    <ExternalHlsPlayer
+      v-if="externalM3u8Url"
+      v-model:selected-quality="selectedQuality"
+      :url="externalM3u8Url"
+      :available-qualities="availableQualities"
+      :quality-labels="qualityLabels"
+    />
     <!-- single-stream (audio+video) が使える場合 -->
     <template v-else-if="isSingleStreamEntry(sources[selectedQuality])">
       <video
