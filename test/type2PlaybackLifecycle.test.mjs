@@ -336,3 +336,49 @@ test("a pending synchronization play cannot affect the current stream after clea
   assert.equal(state.selectedQuality, "360p");
   assert.equal(state.error, "");
 });
+
+test("custom play and pause commands use the current separate AV controller", async (t) => {
+  const { state, video, audio } = await mountPlayer(t);
+  state.audioRef = audio;
+  setSources(state, true);
+  await flush();
+  state.showUnmutePrompt = false;
+  const beforeVideo = video.plays;
+  const beforeAudio = audio.plays;
+  state.playFromControls();
+  assert.equal(video.plays, beforeVideo + 1);
+  assert.equal(audio.plays, beforeAudio + 1);
+  assert.equal(state.controlsPlaybackIntent, true);
+  state.pauseFromControls();
+  assert.equal(state.syncPlayback.wantsPlay, false);
+  assert.equal(state.controlsPlaybackIntent, false);
+  t.mock.timers.tick(4000);
+  assert.equal(video.plays, beforeVideo + 1);
+  assert.equal(audio.plays, beforeAudio + 1);
+});
+
+test("settings and other page gestures do not start a paused player", async (t) => {
+  const { state, video } = await mountPlayer(t);
+  setSources(state);
+  await flush();
+  const before = video.plays;
+  window.dispatchEvent(new Event('click'));
+  window.dispatchEvent(new Event('touchstart'));
+  t.mock.timers.tick(4000);
+  assert.equal(video.plays, before);
+});
+
+test("position restoration after a quality switch does not undo a later custom seek", async (t) => {
+  const { state, video } = await mountPlayer(t);
+  setSources(state);
+  await flush();
+  video.currentTime = 10;
+  state.applyHlsSetup(10);
+  await flush();
+  video.currentTime = 55;
+  video.dispatchEvent(new Event('seeking'));
+  t.mock.timers.tick(300);
+  assert.equal(video.currentTime, 55);
+  video.dispatchEvent(new Event('loadedmetadata'));
+  assert.equal(video.currentTime, 55);
+});

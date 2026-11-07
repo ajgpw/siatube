@@ -35,9 +35,9 @@
         ref="videoRef"
         playsinline
         webkit-playsinline
-        controlslist="nofullscreen"
-        @dblclick.prevent
-        controls
+        :controls="false"
+        disableRemotePlayback
+        tabindex="-1"
         name="media"
         :crossorigin="selectedQualityHasM3u8() ? 'anonymous' : undefined"
         :preload="selectedQualityHasM3u8() ? 'auto' : 'metadata'"
@@ -61,79 +61,6 @@
           @error="handleSourceError"
         />
       </video>
-
-      <div v-if="showUnmutePrompt" class="unmute-prompt" @click.stop="handleUnmuteClick">
-        ミュートを解除する
-      </div>
-
-      <PlayerSettings :visible="settingsVisible" @interaction="showSettingsBox">
-        <label>
-          アンビエントライト:
-          <input type="checkbox" :checked="ambientLightEnabled" @change="setAmbientLightEnabled($event.target.checked)" />
-        </label>
-        <label>
-          繰り返し:
-          <input type="checkbox" v-model="repeatEnabled" />
-        </label>
-        <label :class="{ 'autoplay-disabled': repeatEnabled }">
-          自動再生:
-          <input type="checkbox" v-model="autoplayEnabled" :disabled="repeatEnabled" />
-        </label>
-
-        <button
-          v-if="videoRef"
-          type="button"
-          class="pip-button"
-          :disabled="!fullscreenSupported"
-          @click="enterFullscreen"
-        >全画面</button>
-        <span v-if="fullscreenError" role="status">{{ fullscreenError }}</span>
-
-        <button
-          type="button"
-          class="pip-button"
-          :disabled="!pictureInPictureSupported"
-          :title="pictureInPictureSupported
-            ? 'ピクチャインピクチャを切り替える'
-            : 'この動画またはブラウザはピクチャインピクチャに対応していません'"
-          @click="togglePictureInPicture"
-        >
-          {{ pictureInPictureActive ? "PiPを終了" : "ピクチャインピクチャ" }}
-        </button>
-
-        <label>
-          画質:
-          <select v-model="selectedQuality" class="selector">
-            <option v-for="q in availableQualities" :key="q" :value="q">
-              {{ qualityLabels[q] || q }}
-            </option>
-          </select>
-        </label>
-
-        <label>
-          字幕:
-          <select v-model="selectedSubtitle" class="selector" :disabled="!videoRef || !subtitleTracks.length">
-            <option value="">オフ</option>
-            <option v-for="(track, index) in subtitleTracks" :key="track.src" :value="String(index)">
-              {{ track.label || track.srclang || `字幕 ${index + 1}` }}
-            </option>
-          </select>
-          <span v-if="!subtitleTracks.length">（字幕なし）</span>
-        </label>
-
-        <!-- 非 Apple デバイスでは再生速度選択を常に表示 -->
-        <label v-if="!isAppleDevice()">
-          再生速度:
-          <select v-model.number="selectedPlaybackRate" class="selector">
-            <option v-for="rate in playbackRates" :key="rate" :value="rate">
-              {{ rate }}x
-            </option>
-          </select>
-        </label>
-
-        <button @click="reloadStream" class="reload-button">再読込み</button>
-      </PlayerSettings>
-      <div v-if="isQualitySwitching" class="block-overlay" aria-hidden="true"></div>
     </template>
 
     <!-- その他: videourl (video+audio) の再生 / audio-only -->
@@ -144,7 +71,8 @@
             ref="audioRef"
             preload="auto"
             :autoplay="autoplayEnabled"
-            controls
+            :controls="false"
+            tabindex="-1"
             :key="`${playerRenderKey}:audio:${selectedQuality}`"
             @canplay="markPlayerReady"
             @loadedmetadata="markPlayerReady"
@@ -167,11 +95,11 @@
           ref="videoRef"
           playsinline
           webkit-playsinline
-          controlslist="nofullscreen"
-          @dblclick.prevent
+          :controls="false"
+          disableRemotePlayback
+          tabindex="-1"
           preload="auto"
           :autoplay="autoplayEnabled"
-          controls
           name="media"
           :crossorigin="selectedQualityHasM3u8() ? 'anonymous' : undefined"
           :key="`${playerRenderKey}:${separateAvKey}:${selectedQuality}:${appleSourceIndex}:video`"
@@ -192,9 +120,6 @@
             @error="handleSourceError"
           />
         </video>
-        <div v-if="showUnmutePrompt" class="unmute-prompt" @click.stop="handleUnmuteClick">
-          ミュートを解除する
-        </div>
         <audio
           ref="audioRef"
           preload="auto"
@@ -215,8 +140,54 @@
           />
         </audio>
       </template>
+    </template>
+    <Type2PlayerControls
+      v-if="!externalM3u8Url"
+      :media="videoRef || audioRef"
+      :playback-intent="controlsPlaybackIntent"
+      :buffering="playerBuffering || isQualitySwitching"
+      :audio-only="isAudioOnlyEntry(sources[selectedQuality])"
+      :captions-available="subtitleTracks.length > 0 && !!videoRef"
+      :captions-enabled="selectedSubtitle !== ''"
+      :pip-supported="pictureInPictureSupported"
+      :pip-active="pictureInPictureActive"
+      :unmute-prompt="showUnmutePrompt"
+      @play="playFromControls"
+      @pause="pauseFromControls"
+      @toggle-captions="selectedSubtitle = selectedSubtitle === '' ? '0' : ''"
+      @toggle-pip="togglePictureInPicture"
+      @unmute="unmuteFromControls"
+      @volume-change="handleControlsVolumeChange"
+    >
+      <template #settings>
+        <label>
+          画質:
+          <select v-model="selectedQuality">
+            <option v-for="q in availableQualities" :key="q" :value="q">
+              {{ qualityLabels[q] || q }}
+            </option>
+          </select>
+        </label>
 
-      <PlayerSettings :visible="settingsVisible" @interaction="showSettingsBox">
+        <label>
+          再生速度:
+          <select v-model.number="selectedPlaybackRate">
+            <option v-for="rate in playbackRates" :key="rate" :value="rate">
+              {{ rate }}x
+            </option>
+          </select>
+        </label>
+
+        <label>
+          字幕:
+          <select v-model="selectedSubtitle" :disabled="!videoRef || !subtitleTracks.length">
+            <option value="">オフ</option>
+            <option v-for="(track, index) in subtitleTracks" :key="track.src" :value="String(index)">
+              {{ track.label || track.srclang || `字幕 ${index + 1}` }}
+            </option>
+          </select>
+        </label>
+
         <label>
           アンビエントライト:
           <input type="checkbox" :checked="ambientLightEnabled" @change="setAmbientLightEnabled($event.target.checked)" />
@@ -227,64 +198,12 @@
         </label>
         <label :class="{ 'autoplay-disabled': repeatEnabled }">
           自動再生:
-            <input type="checkbox" v-model="autoplayEnabled" :disabled="repeatEnabled" />
+          <input type="checkbox" v-model="autoplayEnabled" :disabled="repeatEnabled" />
         </label>
 
-        <button
-          v-if="videoRef"
-          type="button"
-          class="pip-button"
-          :disabled="!fullscreenSupported"
-          @click="enterFullscreen"
-        >全画面</button>
-        <span v-if="fullscreenError" role="status">{{ fullscreenError }}</span>
-
-        <button
-          type="button"
-          class="pip-button"
-          :disabled="!pictureInPictureSupported"
-          :title="pictureInPictureSupported
-            ? 'ピクチャインピクチャを切り替える'
-            : 'この動画またはブラウザはピクチャインピクチャに対応していません'"
-          @click="togglePictureInPicture"
-        >
-          {{ pictureInPictureActive ? "PiPを終了" : "ピクチャインピクチャ" }}
-        </button>
-
-        <label>
-          画質:
-          <select v-model="selectedQuality" class="selector">
-            <option v-for="q in availableQualities" :key="q" :value="q">
-              {{ qualityLabels[q] || q }}
-            </option>
-          </select>
-        </label>
-
-        <label>
-          字幕:
-          <select v-model="selectedSubtitle" class="selector" :disabled="!videoRef || !subtitleTracks.length">
-            <option value="">オフ</option>
-            <option v-for="(track, index) in subtitleTracks" :key="track.src" :value="String(index)">
-              {{ track.label || track.srclang || `字幕 ${index + 1}` }}
-            </option>
-          </select>
-          <span v-if="!subtitleTracks.length">（字幕なし）</span>
-        </label>
-
-        <!-- 非 Apple デバイスでは再生速度選択を常に表示 -->
-        <label v-if="!isAppleDevice()">
-          再生速度:
-          <select v-model.number="selectedPlaybackRate" class="selector">
-            <option v-for="rate in playbackRates" :key="rate" :value="rate">
-              {{ rate }}x
-            </option>
-          </select>
-        </label>
-
-        <button @click="reloadStream" class="reload-button">再読込み</button>
-      </PlayerSettings>
-      <div v-if="isQualitySwitching" class="block-overlay" aria-hidden="true"></div>
-    </template>
+        <button @click="reloadStream">再読込み</button>
+      </template>
+    </Type2PlayerControls>
     <PlayerLoading
       v-if="type2LoadingOverlayVisible"
       class="type2-loading-overlay"
@@ -310,8 +229,7 @@
 
 <script setup>
 import { computed, ref, watch, onMounted, nextTick, onBeforeUnmount } from "vue";
-import { createVideoFullscreen } from "@/utils/player/videoFullscreen.js";
-import PlayerSettings from "@/components/player/PlayerSettings.vue";
+import Type2PlayerControls from "@/components/player/Type2PlayerControls.vue";
 import ExternalHlsPlayer from "@/components/player/ExternalHlsPlayer.vue";
 import PlayerLoading from "@/components/player/PlayerLoading.vue";
 import {
@@ -420,20 +338,6 @@ const diffText = ref("0");
 const videoRef = ref(null);
 const { enabled: ambientLightEnabled, setEnabled: setAmbientLightEnabled } = useAmbientLight();
 const audioRef = ref(null);
-let fullscreenController = null;
-const fullscreenSupported = ref(false);
-const fullscreenError = ref('');
-
-async function enterFullscreen(event) {
-  // Close the mobile settings dialog before entering the native video player.
-  event.currentTarget.closest('dialog')?.close();
-  fullscreenError.value = '';
-  const controller = fullscreenController;
-  if (controller && !await controller.enter() && controller === fullscreenController) {
-    fullscreenError.value = '全画面に切り替えられませんでした。動画の再生後にもう一度お試しください。';
-  }
-}
-
 const pictureInPictureActive = ref(false);
 const pictureInPictureSupported = computed(() => {
   const video = videoRef.value;
@@ -497,7 +401,9 @@ const isQualitySwitching = ref(false);
 let qualitySwitchTimer = null;
 let syncPlayback = null;
 const showUnmutePrompt = ref(false);
-const settingsVisible = ref(true);
+const settingsVisible = ref(true); // Retained for the shared playback controller.
+const controlsPlaybackIntent = ref(null);
+const controlsMuted = ref(null);
 const USER_GESTURE_KEY = 'yt_user_gesture_v1';
 let _onEndedAttached = false;
 let streamRequestSequence = 0;
@@ -618,6 +524,7 @@ function recoverInitialPlayback(force = false) {
     if (force) {
       syncPlayback?.dispose();
       syncPlayback = null;
+      controlsPlaybackIntent.value = null;
       resetPlaybackController();
       error.value = "動画を再生できませんでした。再取得してもう一度お試しください。";
     }
@@ -732,8 +639,6 @@ onMounted(() => {
   }
 
   if (videoRef.value) {
-    videoRef.value.addEventListener('mousemove', showSettingsBox);
-    videoRef.value.addEventListener('click', showSettingsBox);
     // ended リスナを初期化時に追加
     try {
       videoRef.value.addEventListener('ended', _onEnded);
@@ -743,11 +648,6 @@ onMounted(() => {
     applyRepeatAndAutoplay();
   }
 
-  window.addEventListener('mousemove', showSettingsBox);
-  window.addEventListener('click', showSettingsBox);
-  window.addEventListener('touchstart', showSettingsBox, { passive: true });
-  window.addEventListener('scroll', showSettingsBox);
-  showSettingsBox();
   window.addEventListener(AUTOPLAY_SETTING_EVENT, handleAutoplaySettingChange);
   // attach loop timeupdate handler if video element exists
   try {
@@ -758,7 +658,6 @@ onMounted(() => {
 onBeforeUnmount(() => {
   ++streamRequestSequence;
   subtitleSelection?.dispose();
-  fullscreenController?.dispose();
   streamRequest.dispose();
   clearInitialPlaybackRecovery();
   clearM3u8LoadTimeout();
@@ -766,14 +665,11 @@ onBeforeUnmount(() => {
   finishQualitySwitch();
   syncPlayback?.dispose();
   syncPlayback = null;
+  controlsPlaybackIntent.value = null;
   revokeSubtitleTracks(subtitleTracks.value);
   disposePlaybackController();
   try { detachPictureInPictureListeners(videoRef.value); } catch (e) {}
   try {
-    window.removeEventListener('mousemove', showSettingsBox);
-    window.removeEventListener('click', showSettingsBox);
-    window.removeEventListener('touchstart', showSettingsBox);
-    window.removeEventListener('scroll', showSettingsBox);
     window.removeEventListener(AUTOPLAY_SETTING_EVENT, handleAutoplaySettingChange);
   } catch (e) {}
   try {
@@ -1081,10 +977,8 @@ const {
   reset: resetPlaybackController,
   dispose: disposePlaybackController,
   handleUnmuteClick,
-  onFirstUserGesture,
   onTimeUpdateLoopHandler,
   scheduleAutoplay,
-  showSettingsBox,
 } = createPlaybackController({
   videoRef,
   audioRef,
@@ -1097,6 +991,40 @@ const {
   startM3u8LoadTimeout,
   clearM3u8LoadTimeout,
 });
+
+function unmuteFromControls() {
+  controlsMuted.value = false;
+  handleUnmuteClick();
+}
+
+function handleControlsVolumeChange({ muted }) {
+  controlsMuted.value = muted;
+  showUnmutePrompt.value = false;
+  try { localStorage.setItem(USER_GESTURE_KEY, '1'); } catch {}
+}
+
+function playFromControls() {
+  cancelAutoplay();
+  if (showUnmutePrompt.value) {
+    unmuteFromControls();
+    return;
+  }
+  if (syncPlayback) syncPlayback.play();
+  else {
+    const media = videoRef.value || audioRef.value;
+    if (media) {
+      try {
+        media.play()?.catch(() => {});
+      } catch {}
+    }
+  }
+}
+
+function pauseFromControls() {
+  cancelAutoplay();
+  if (syncPlayback) syncPlayback.pause();
+  else (videoRef.value || audioRef.value)?.pause();
+}
 
 // 繰り返し再生が選ばれた時
 watch(repeatEnabled, (newVal) => {
@@ -1186,9 +1114,14 @@ function applyHlsSetup(prevTime = 0) {
     // 再レンダリング後に時間を復元して再生を試みる
     try {
       if (videoRef.value) {
-        // HLS は currentTime 設定が成功しないこともあるため複数回試す
-        videoRef.value.currentTime = prevTime;
-        setTimeout(() => { if (!isCurrentSelection()) return; try { if (videoRef.value) videoRef.value.currentTime = prevTime; } catch (e) {} }, 250);
+        // Restore on metadata readiness rather than rewinding a later user seek on a timer.
+        const video = videoRef.value;
+        const restorePosition = () => {
+          if (!isCurrentSelection() || video !== videoRef.value || video.currentTime > 0) return;
+          try { video.currentTime = prevTime; } catch {}
+        };
+        if (video.readyState < 1) video.addEventListener('loadedmetadata', restorePosition, { once: true });
+        video.currentTime = prevTime;
       }
     } catch (e) {}
 
@@ -1205,21 +1138,16 @@ function applyHlsSetup(prevTime = 0) {
 
     try {
       if (videoRef.value) {
-        videoRef.value.muted = !granted2;
+        videoRef.value.muted = controlsMuted.value ?? !granted2;
         if (autoplayEnabled.value) scheduleAutoplay();
       }
       if (audioRef.value) {
-        audioRef.value.muted = !granted2;
+        audioRef.value.muted = controlsMuted.value ?? !granted2;
         if (autoplayEnabled.value) scheduleAutoplay();
       }
       attachBufferListeners();
-      showUnmutePrompt.value = !granted2;
-      if (!granted2) {
-        window.addEventListener('click', onFirstUserGesture, { once: true });
-        window.addEventListener('touchstart', onFirstUserGesture, { once: true });
-      } else {
-        scheduleAutoplay();
-      }
+      showUnmutePrompt.value = controlsMuted.value === null && !granted2;
+      if (granted2) scheduleAutoplay();
     } catch (e) {}
     // Add playback check for HLS
     if (videoRef.value) {
@@ -1234,6 +1162,7 @@ watch([selectedQuality, playerRenderKey], ([newQuality], [oldQuality]) => {
   finishQualitySwitch();
   syncPlayback?.dispose();
   syncPlayback = null;
+  controlsPlaybackIntent.value = null;
   resetPlaybackController();
   const isCurrentSelection = capturePlaybackSelection();
   clearPlaybackConfirmationTimer();
@@ -1304,17 +1233,12 @@ watch([selectedQuality, playerRenderKey], ([newQuality], [oldQuality]) => {
       const granted2 = (() => { try { return localStorage.getItem(USER_GESTURE_KEY) === '1'; } catch (e) { return false; } })();
       try {
         if (audioRef.value) {
-          audioRef.value.muted = !granted2;
+          audioRef.value.muted = controlsMuted.value ?? !granted2;
           if (autoplayEnabled.value) scheduleAutoplay();
         }
         attachBufferListeners();
-        showUnmutePrompt.value = !granted2;
-        if (!granted2) {
-          window.addEventListener('click', onFirstUserGesture, { once: true });
-          window.addEventListener('touchstart', onFirstUserGesture, { once: true });
-        } else {
-          scheduleAutoplay();
-        }
+        showUnmutePrompt.value = controlsMuted.value === null && !granted2;
+        if (granted2) scheduleAutoplay();
       } catch (e) {}
       if (audioRef.value) {
         audioRef.value.addEventListener('canplay', checkPlayback, { once: true });
@@ -1345,7 +1269,7 @@ watch([selectedQuality, playerRenderKey], ([newQuality], [oldQuality]) => {
         audioSources: entry.audio,
         initialTime: prevTime,
         playbackRate: selectedPlaybackRate.value,
-        onPlaybackIntent: () => cancelAutoplay(),
+        onPlaybackIntent: (playing) => { controlsPlaybackIntent.value = playing; cancelAutoplay(); },
         onDrift: (diff) => { diffText.value = `${(diff * 1000).toFixed(0)} ms`; },
         onPlayError: (failure, media) => {
           if (!isCurrentSelection()) return;
@@ -1373,21 +1297,16 @@ watch([selectedQuality, playerRenderKey], ([newQuality], [oldQuality]) => {
       const granted2 = (() => { try { return localStorage.getItem(USER_GESTURE_KEY) === '1'; } catch (e) { return false; } })();
       try {
         if (videoRef.value) {
-          videoRef.value.muted = !granted2;
+          videoRef.value.muted = controlsMuted.value ?? !granted2;
           if (autoplayEnabled.value) scheduleAutoplay();
         }
         if (audioRef.value) {
-          audioRef.value.muted = !granted2;
+          audioRef.value.muted = controlsMuted.value ?? !granted2;
           if (autoplayEnabled.value) scheduleAutoplay();
         }
         attachBufferListeners();
-        showUnmutePrompt.value = !granted2;
-        if (!granted2) {
-          window.addEventListener('click', onFirstUserGesture, { once: true });
-          window.addEventListener('touchstart', onFirstUserGesture, { once: true });
-        } else {
-          scheduleAutoplay();
-        }
+        showUnmutePrompt.value = controlsMuted.value === null && !granted2;
+        if (granted2) scheduleAutoplay();
       } catch (e) {}
       if (wasPlaying) syncPlayback?.play();
     });
@@ -1412,6 +1331,7 @@ function resetStreamPlayback() {
   finishQualitySwitch();
   syncPlayback?.dispose();
   syncPlayback = null;
+  controlsPlaybackIntent.value = null;
   resetPlaybackController();
   clearInitialPlaybackRecovery();
   clearM3u8LoadTimeout();
@@ -1625,10 +1545,6 @@ watch(selectedSubtitle, () => subtitleSelection?.sync(), { flush: "sync" });
 // videoRef の変化を監視して ended リスナの attach/detach を行う
 watch(videoRef, (newEl, oldEl) => {
   emit("video-element", newEl);
-  fullscreenController?.dispose();
-  fullscreenController = newEl ? createVideoFullscreen(newEl) : null;
-  fullscreenSupported.value = fullscreenController?.supported ?? false;
-  fullscreenError.value = '';
   subtitleSelection?.dispose();
   subtitleSelection = null;
   detachPictureInPictureListeners(oldEl);
