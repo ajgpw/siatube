@@ -242,29 +242,29 @@ test("an HLS external playback link is not covered by a loading overlay", async 
 });
 
 test("replacing separate AV binds the new pair and disposes the old synchronization", async (t) => {
-  const { state, video, audio, frames, unmount } = await mountPlayer(t, { apple: true });
+  const { state, video, audio, unmount } = await mountPlayer(t, { apple: true });
   state.audioRef = audio;
   setSources(state, true);
   state.sources["720p"].video.sources = [{ url: "https://media.example/first.mp4" }, { url: "https://media.example/second.mp4" }];
   await flush();
-  assert.equal(frames.size, 1);
-  assert.equal(typeof video.onplay, "function");
+  const oldController = state.syncPlayback;
+  assert.ok(oldController);
   const replacementVideo = new Media();
   const replacementAudio = new Media();
   state.videoRef = replacementVideo;
   state.audioRef = replacementAudio;
   state.tryNextAppleSource();
   await flush();
-  assert.equal(video.onplay, null);
-  assert.equal(audio.onplay, null);
-  assert.equal(frames.size, 1);
   assert.equal(replacementVideo.children[0].src, "https://media.example/second.mp4");
-  replacementVideo.onplay();
-  assert.equal(replacementAudio.plays, 1);
+  oldController.play();
   assert.equal(audio.plays, 0);
+  state.syncPlayback.play();
+  assert.equal(replacementAudio.plays, 1);
   unmount();
-  assert.equal(frames.size, 0);
-  assert.equal(replacementVideo.onplay, null);
+  const plays = replacementAudio.plays;
+  replacementVideo.dispatchEvent(new Event("canplay"));
+  t.mock.timers.tick(500);
+  assert.equal(replacementAudio.plays, plays);
 });
 
 test("an old unlock timer cannot unlock a newer switch, and readiness releases it immediately", async (t) => {
@@ -319,18 +319,20 @@ test("deferred preload while paused is not treated as a failed stream", async (t
   assert.equal(state.error, "");
 });
 
-test("a pending Chromium synchronization play cannot start old audio after cleanup", async (t) => {
-  const { state, video, audio, frames } = await mountPlayer(t);
+test("a pending synchronization play cannot affect the current stream after cleanup", async (t) => {
+  const { state, video, audio } = await mountPlayer(t);
   state.audioRef = audio;
   setSources(state, true);
   await flush();
-  let resolvePlay;
-  video.playResult = () => new Promise((resolve) => { resolvePlay = resolve; });
-  audio.onplay();
+  let rejectPlay;
+  video.playResult = () => new Promise((_, reject) => { rejectPlay = reject; });
+  state.syncPlayback.play();
+  assert.equal(audio.plays, 1);
   state.selectedQuality = "360p";
   await flush();
-  resolvePlay();
+  rejectPlay(new DOMException("old source failed", "NotSupportedError"));
   await flush();
-  assert.equal(audio.plays, 0);
-  assert.equal(frames.size, 0);
+  assert.equal(audio.plays, 1);
+  assert.equal(state.selectedQuality, "360p");
+  assert.equal(state.error, "");
 });

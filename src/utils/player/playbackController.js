@@ -25,6 +25,7 @@ function getBufferedAhead(element) {
 export function createPlaybackController({
   videoRef,
   audioRef,
+  getSynchronizedPlayback = () => null,
   settingsVisible,
   showUnmutePrompt,
   autoplayEnabled,
@@ -41,6 +42,11 @@ export function createPlaybackController({
   let settingsHideTimer = null;
 
   function playMedia() {
+    const synchronized = getSynchronizedPlayback();
+    if (synchronized) {
+      synchronized.play();
+      return;
+    }
     for (const media of [videoRef.value, audioRef.value]) {
       try { media?.play()?.catch(() => {}); } catch {}
     }
@@ -73,6 +79,7 @@ export function createPlaybackController({
   }
 
   function attachBufferListeners() {
+    if (getSynchronizedPlayback()) return;
     if (bufferElements.length) return;
     bufferElements = [videoRef.value, audioRef.value].filter(Boolean);
     try {
@@ -153,6 +160,7 @@ export function createPlaybackController({
   }
 
   function onTimeUpdateLoopHandler() {
+    if (getSynchronizedPlayback()) return;
     try {
       if (!videoRef.value || !repeatEnabled.value) return;
       const currentTime = videoRef.value.currentTime || 0;

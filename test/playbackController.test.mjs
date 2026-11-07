@@ -10,7 +10,7 @@ function media() {
   });
 }
 
-function harness(t) {
+function harness(t, options = {}) {
   const original = Object.getOwnPropertyDescriptor(globalThis, "window");
   globalThis.window = new EventTarget();
   t.mock.timers.enable({ apis: ["setTimeout"] });
@@ -22,6 +22,7 @@ function harness(t) {
     settingsVisible: { value: false }, showUnmutePrompt: { value: false },
     isCurrentlyUsingM3u8: () => true,
     startM3u8LoadTimeout: () => monitored++, clearM3u8LoadTimeout() {},
+    ...options,
   });
   t.after(() => {
     controller.dispose();
@@ -65,4 +66,20 @@ test("scheduled autoplay handles a browser policy rejection without an unhandled
   t.mock.timers.tick(3_000);
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(attempts, 1);
+});
+
+
+test("separate AV routes autoplay through its controller and skips competing buffer/loop recovery", (t) => {
+  let plays = 0;
+  const { controller, videoRef, getMonitored } = harness(t, {
+    getSynchronizedPlayback: () => ({ play: () => plays++ }),
+  });
+  controller.attachBufferListeners();
+  videoRef.value.dispatchEvent(new Event("waiting"));
+  controller.onTimeUpdateLoopHandler();
+  controller.scheduleAutoplay();
+  t.mock.timers.tick(6000);
+  assert.equal(plays, 1);
+  assert.equal(videoRef.value.plays, 0);
+  assert.equal(getMonitored(), 0);
 });

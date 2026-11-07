@@ -193,7 +193,7 @@
           ref="audioRef"
           preload="auto"
           style="display:none;"
-          :autoplay="autoplayEnabled"
+          :autoplay="false"
           :key="`${playerRenderKey}:${separateAvKey}:audio`"
           @canplay="markPlayerReady"
           @loadedmetadata="markPlayerReady"
@@ -312,7 +312,7 @@ import {
   isVideoStreamError,
   stream as fetchStream,
 } from "@/services/api/siatubeApi.js";
-import { setupSyncPlayback } from "@/utils/player/syncPlayback.js";
+import { createSyncPlayback } from "@/utils/player/syncPlayback.js";
 import { createPlaybackController } from "@/utils/player/playbackController.js";
 import { useMediaSessionMetadata } from "@/composables/useMediaSessionMetadata.js";
 import { useAmbientLight } from "@/composables/useAmbientLight.js";
@@ -489,7 +489,7 @@ const type2LoadingOverlayVisible = computed(() => Boolean(
 ));
 const isQualitySwitching = ref(false);
 let qualitySwitchTimer = null;
-let cleanupSyncPlayback = null;
+let syncPlayback = null;
 const showUnmutePrompt = ref(false);
 const settingsVisible = ref(true);
 const USER_GESTURE_KEY = 'yt_user_gesture_v1';
@@ -610,8 +610,8 @@ function recoverInitialPlayback(force = false) {
     if (tryMuxedThirdSetup()) return;
     finishQualitySwitch();
     if (force) {
-      cleanupSyncPlayback?.();
-      cleanupSyncPlayback = null;
+      syncPlayback?.dispose();
+      syncPlayback = null;
       resetPlaybackController();
       error.value = "動画を再生できませんでした。再取得してもう一度お試しください。";
     }
@@ -758,8 +758,8 @@ onBeforeUnmount(() => {
   clearM3u8LoadTimeout();
   clearPlaybackConfirmationTimer();
   finishQualitySwitch();
-  cleanupSyncPlayback?.();
-  cleanupSyncPlayback = null;
+  syncPlayback?.dispose();
+  syncPlayback = null;
   revokeSubtitleTracks(subtitleTracks.value);
   disposePlaybackController();
   try { detachPictureInPictureListeners(videoRef.value); } catch (e) {}
@@ -1082,6 +1082,7 @@ const {
 } = createPlaybackController({
   videoRef,
   audioRef,
+  getSynchronizedPlayback: () => syncPlayback,
   settingsVisible,
   showUnmutePrompt,
   autoplayEnabled,
@@ -1118,6 +1119,10 @@ function checkPlayback(event) {
   if (event?.currentTarget &&
     event.currentTarget !== videoRef.value && event.currentTarget !== audioRef.value) return;
   const isCurrentSelection = capturePlaybackSelection();
+  if (syncPlayback) {
+    syncPlayback.play();
+    return;
+  }
   for (const media of [videoRef.value, audioRef.value].filter(Boolean)) {
     const onError = (failure) => {
       if (!isCurrentSelection() || (media !== videoRef.value && media !== audioRef.value)) return;
@@ -1219,9 +1224,10 @@ function applyHlsSetup(prevTime = 0) {
 
 // selectedQuality の監視: 選択先が HLS(url) を持つかどうかで挙動を分ける
 watch([selectedQuality, playerRenderKey], ([newQuality], [oldQuality]) => {
+  const wasPlaying = syncPlayback?.wantsPlay ?? Boolean(videoRef.value && !videoRef.value.paused);
   finishQualitySwitch();
-  cleanupSyncPlayback?.();
-  cleanupSyncPlayback = null;
+  syncPlayback?.dispose();
+  syncPlayback = null;
   resetPlaybackController();
   const isCurrentSelection = capturePlaybackSelection();
   clearPlaybackConfirmationTimer();
@@ -1311,7 +1317,7 @@ watch([selectedQuality, playerRenderKey], ([newQuality], [oldQuality]) => {
     return;
   }
 
-  // Otherwise use legacy video+audio sync flow (entry.video must exist)
+  // One controller owns separated audio/video playback and position restoration.
   if (entry.video) {
     // Force element re-create for separated AV (Safari/iOS cache issues)
     separateAvKey.value += 1;
@@ -1326,15 +1332,26 @@ watch([selectedQuality, playerRenderKey], ([newQuality], [oldQuality]) => {
     }
     nextTick(() => {
       if (!isCurrentSelection()) return;
-      cleanupSyncPlayback = setupSyncPlayback(
-        videoRef.value,
-        audioRef.value,
-        sources,
-        selectedQuality,
-        diffText,
-        selectedPlaybackRate,
-        getVideoSourcesForEntry(entry)
-      );
+      syncPlayback = createSyncPlayback({
+        video: videoRef.value,
+        audio: audioRef.value,
+        videoSources: getVideoSourcesForEntry(entry),
+        audioSources: entry.audio,
+        initialTime: prevTime,
+        playbackRate: selectedPlaybackRate.value,
+        onPlaybackIntent: () => cancelAutoplay(),
+        onDrift: (diff) => { diffText.value = `${(diff * 1000).toFixed(0)} ms`; },
+        onPlayError: (failure, media) => {
+          if (!isCurrentSelection()) return;
+          if (failure?.name === "NotAllowedError") {
+            finishQualitySwitch();
+            playerBuffering.value = false;
+          } else if (failure?.name === "NotSupportedError" || media.error) {
+            if (media === videoRef.value) handleVideoError({ currentTarget: media });
+            else handleAudioError({ currentTarget: media });
+          }
+        },
+      });
       if (videoRef.value || audioRef.value) markPlayerReady();
       applyRepeatAndAutoplay();
       
@@ -1366,27 +1383,7 @@ watch([selectedQuality, playerRenderKey], ([newQuality], [oldQuality]) => {
           scheduleAutoplay();
         }
       } catch (e) {}
-      // Add playback check for video+audio
-      if (videoRef.value) {
-        videoRef.value.addEventListener('canplay', checkPlayback, { once: true });
-      }
-      if (audioRef.value) {
-        audioRef.value.addEventListener('canplay', checkPlayback, { once: true });
-      }
-      setTimeout(() => {
-        if (!isCurrentSelection()) return;
-        try {
-          if (videoRef.value) videoRef.value.currentTime = prevTime;
-          if (audioRef.value) audioRef.value.currentTime = prevTime;
-        } catch (e) {}
-        setTimeout(() => {
-          if (!isCurrentSelection()) return;
-          try {
-            if (videoRef.value) videoRef.value.currentTime = prevTime;
-            if (audioRef.value) audioRef.value.currentTime = prevTime;
-          } catch (e) {}
-        }, 600);
-      }, 600);
+      if (wasPlaying) syncPlayback?.play();
     });
   }
 });
@@ -1395,11 +1392,11 @@ function applyRepeatAndAutoplay() {
   if (videoRef.value) {
     videoRef.value.loop = !!repeatEnabled.value;
     videoRef.value.autoplay = !!autoplayEnabled.value;
-    videoRef.value.playbackRate = selectedPlaybackRate.value;
+    if (!syncPlayback) videoRef.value.playbackRate = selectedPlaybackRate.value;
   }
   if (audioRef.value) {
-    audioRef.value.loop = !!repeatEnabled.value;
-    audioRef.value.autoplay = !!autoplayEnabled.value;
+    audioRef.value.loop = !syncPlayback && !!repeatEnabled.value;
+    audioRef.value.autoplay = !syncPlayback && !!autoplayEnabled.value;
     audioRef.value.playbackRate = selectedPlaybackRate.value;
   }
 }
@@ -1407,8 +1404,8 @@ function applyRepeatAndAutoplay() {
 function resetStreamPlayback() {
   ++streamRequestSequence;
   finishQualitySwitch();
-  cleanupSyncPlayback?.();
-  cleanupSyncPlayback = null;
+  syncPlayback?.dispose();
+  syncPlayback = null;
   resetPlaybackController();
   clearInitialPlaybackRecovery();
   clearM3u8LoadTimeout();
@@ -1609,6 +1606,10 @@ watch(
 );
 
 watch(selectedPlaybackRate, () => {
+  if (syncPlayback) {
+    syncPlayback.setPlaybackRate(selectedPlaybackRate.value);
+    return;
+  }
   if (videoRef.value) videoRef.value.playbackRate = selectedPlaybackRate.value;
   if (audioRef.value) audioRef.value.playbackRate = selectedPlaybackRate.value;
 });
